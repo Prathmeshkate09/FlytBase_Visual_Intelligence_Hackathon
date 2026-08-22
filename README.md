@@ -1,94 +1,115 @@
 # FlytBase Traffic Analysis Agent
 
-Solo-hackathon pipeline for **Level 1: Detection & Tracking**, designed so the same trajectory store can power Levels 2–5.
+Colab-ready pipeline for **Level 1 detection/tracking** and **Level 2 object insight** from aerial traffic video.
 
-## Decision
+## Engineering boundary
 
-- **Primary compute:** Google Colab T4. It mounts Google Drive directly and avoids moving hours of video through the local laptop.
-- **Backup:** Kaggle T4 if Colab quota or availability fails.
-- **Detector:** `yolo26l.pt` at 1280 px. Increase to 1600 for very small vehicles.
-- **Tracker:** BoT-SORT with sparse optical-flow camera-motion compensation. This is safer than plain ByteTrack for drone or moving-camera footage.
-- **No custom training initially:** there are no annotations and the same-day deadline makes fine-tuning a poor first move.
-- **Ground point:** bottom-center of each box. This is the correct point to later project onto the road plane.
+This project separates what the pixels support from what requires calibration:
 
-## What the first pipeline produces
+- Level 1 produces persistent IDs, raw tracks, cleaned trajectories, object metrics, counts and heatmaps.
+- Level 2 reuses those tracks and adds coarse vehicle colour, scene-relative vehicle size, per-frame velocity/acceleration, stopped duration and a clean evidence video.
+- Metric speed is emitted only when a validated image-to-ground homography is supplied.
+- Make/model and licence-plate text are not claimed from low-resolution top-down crops. Each track receives an explicit plate-resolution assessment instead.
 
-- Annotated MP4 with persistent IDs and trajectory trails
-- Raw detection/track CSV
-- Cleaned and gap-interpolated trajectory CSV
-- Per-object duration, path, continuity, class consistency, and speed profile in pixels
-- Per-second visible-object counts
-- Trajectory-density heatmap
-- JSON summary with honest no-ground-truth quality proxies
-- Streamlit demo dashboard
-
-> Important: speed remains **pixels/second** until a homography or telemetry-based ground calibration is added. Do not present it as km/h yet.
-
-## Colab quick start
-
-1. In Google Drive, add a shortcut for the shared dataset folder to **My Drive**.
-2. Upload this project folder or ZIP to `MyDrive/FlytBase/`.
-3. In Colab select **Runtime → Change runtime type → T4 GPU**.
-4. Run:
-
-```python
-from google.colab import drive
-drive.mount('/content/drive')
-```
+## Level 1 command used for the selected V3 run
 
 ```bash
-%cd /content/drive/MyDrive/FlytBase/flytbase-traffic-agent
-!pip install -q -r requirements.txt
-```
-
-First run only a 60-second clip so we can tune confidence and image size:
-
-```bash
-!python run.py \
-  --input "/content/drive/MyDrive/REPLACE_WITH_DATASET_PATH/video.mp4" \
-  --output "/content/drive/MyDrive/FlytBase/results/level1_smoke" \
+python run.py \
+  --input /content/intersection_60s.mp4 \
+  --output /content/flytbase_results/level1_botsort_drone_v3 \
   --model yolo26l.pt \
+  --tracker config/botsort_drone.yaml \
   --imgsz 1280 \
-  --conf 0.10 \
-  --max-seconds 60
-```
-
-If vehicles are missed:
-
-```bash
-!python run.py \
-  --input "/content/drive/MyDrive/REPLACE_WITH_DATASET_PATH/video.mp4" \
-  --output "/content/drive/MyDrive/FlytBase/results/level1_highres" \
-  --model yolo26l.pt \
-  --imgsz 1600 \
   --conf 0.05 \
-  --max-seconds 60
+  --classes 2,3,5,7 \
+  --device 0 \
+  --stride 1 \
+  --max-seconds 15
 ```
 
-After selecting the best settings, remove `--max-seconds` for the submission clip.
+## Level 2 quick run: no detection rerun
 
-## Dashboard
+Use the exact source video and `raw_tracks.csv` from Level 1:
 
 ```bash
-!streamlit run demo_app.py --server.port 8501
+python run_level2.py \
+  --raw-tracks /content/flytbase_results/level1_botsort_drone_v3/raw_tracks.csv \
+  --video /content/intersection_60s.mp4 \
+  --output /content/flytbase_results/level2_object_insight
 ```
 
-For a same-day submission, the annotated video plus `trajectories.csv`, `summary.json`, and the density heatmap are the core evidence.
+This immediately produces defensible appearance features and pixel-space motion. The summary will explicitly mark metric kinematics unavailable.
 
-## Execution order for today
+## Preferred metric run: use the supplied DJI SRT telemetry
 
-1. **Unlock Level 1 quickly:** use one representative 45–90 second clip, produce IDs + CSV + evidence video, and submit.
-2. **Level 2:** speed profile, stopped duration, trajectory shape, class and turning movement per road user.
-3. **Level 3:** class/movement counts, queue evolution, flow/density, heatmap and congestion timeline.
-4. **Level 4:** map bottom-centres through four or more road control points into metres; fuse telemetry if the dataset supplies synchronized fields.
-5. **Level 5:** pairwise conflict metrics (TTC/PET), failed merges, congestion-origin reasoning, and natural-language search over computed events.
+The dataset includes frame-level GPS, relative altitude, 35 mm-equivalent focal length and gimbal yaw/pitch/roll. For a clip that begins at telemetry frame 0:
 
-## Required next input
+```bash
+python run_level2.py \
+  --raw-tracks /content/flytbase_results/level1_botsort_drone_v3/raw_tracks.csv \
+  --video /content/intersection_60s.mp4 \
+  --output /content/flytbase_results/level2_object_insight_metric \
+  --srt /content/drive/MyDrive/Intersection_1080p.srt \
+  --srt-segment-index 0 \
+  --srt-max-interpolation-gap-frames 2 \
+  --srt-frame-offset 0
+```
 
-To tune this correctly, provide:
+The intersection SRT contains two concatenated `FrameCnt` sequences. Segment selection is therefore explicit rather than guessed. Segment 0 also has one missing log record at frame 407; the bounded-gap setting permits interpolation only across gaps this small and records every interpolated frame in the projection report. The projector uses a pinhole camera model, translates GPS into local east/north offsets and intersects each bottom-centre image ray with a locally flat ground plane. A 31-frame Savitzky-Golay window is used to suppress detector-box jitter while preserving road-scale motion. Speeds are explicitly labelled **telemetry-derived estimates**, not survey-grade measurements. Reliability flags require valid downward rays, sufficient duration, high track continuity and valid per-frame telemetry.
 
-- Screenshot of the Drive folder file listing with names and sizes
-- One representative video or a 30–60 second sample
-- Any telemetry CSV/JSON associated with that video
-- The full Level 1 submission page, including accepted files and scoring fields
+## Manual homography fallback
 
+1. Export a labelled frame:
+
+```bash
+python prepare_calibration.py \
+  --video /content/intersection_60s.mp4 \
+  --frame 200 \
+  --output /content/calibration_frame.png
+```
+
+2. Copy `config/calibration.example.json` to `config/intersection_calibration.json`.
+3. Replace the example image points with four or more road-plane points from the labelled frame.
+4. Replace the world points with the corresponding measured metre coordinates.
+5. State the source honestly as `surveyed`, `map-derived`, or `assumption-based`.
+6. Run:
+
+```bash
+python run_level2.py \
+  --raw-tracks /content/flytbase_results/level1_botsort_drone_v3/raw_tracks.csv \
+  --video /content/intersection_60s.mp4 \
+  --output /content/flytbase_results/level2_object_insight_metric \
+  --calibration config/intersection_calibration.json
+```
+
+The homography loader rejects degenerate control points and calibrations whose reprojection error exceeds the configured limit. Metric summaries only include tracks with at least 80% reliable ground projections, at least 70% observed frames, and at least two seconds of duration.
+
+## Level 2 outputs
+
+- `track_appearance.csv`: track-level coarse colour and confidence
+- `level2_kinematics.csv`: frame-level smoothed position, velocity, acceleration and heading
+- `level2_object_insights.csv`: one row per track segment with appearance and kinematic summaries
+- `level2_speed_profiles.png`: profiles for the longest tracks
+- `level2_evidence.mp4`: clean annotated evidence video
+- `metric_projection_report.json`: SRT camera model or homography provenance and validation details
+- `level2_summary.json`: submission-ready facts and limitations
+- `level2_run_metadata.json`: reproducibility metadata
+
+## Browser-compatible evidence video
+
+OpenCV writes a portable intermediate MP4. Convert it for browser playback in Colab:
+
+```bash
+ffmpeg -y \
+  -i /content/flytbase_results/level2_object_insight/level2_evidence.mp4 \
+  -c:v libx264 -preset veryfast -crf 25 -an \
+  /content/FlytBase_Level2_Evidence.mp4
+```
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+The tests cover trajectory cleaning, pre-stabilisation class consistency, colour families, relative-size classification, homography validation, SRT parsing, camera projection scale and the strict metric/uncalibrated kinematics boundary.

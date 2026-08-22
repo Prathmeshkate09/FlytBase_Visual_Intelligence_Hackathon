@@ -1,0 +1,17 @@
+{
+  "reference": "REPLACE: surveyed or map-measured road-plane control points",
+  "quality": "map-derived",
+  "max_reprojection_error_m": 0.75,
+  "image_points_px": [
+    [420.0, 260.0],
+    [1280.0, 260.0],
+    [1420.0, 900.0],
+    [280.0, 900.0]
+  ],
+  "world_points_m": [
+    [0.0, 0.0],
+    [20.0, 0.0],
+    [20.0, 30.0],
+    [0.0, 30.0]
+  ]
+}

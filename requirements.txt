@@ -1,8 +1,9 @@
-ultralytics>=8.4.63
-opencv-python-headless>=4.10.0
-numpy>=1.26.0
-pandas>=2.2.0
-scipy>=1.13.0
-matplotlib>=3.9.0
-tqdm>=4.66.0
-streamlit>=1.38.0
+ultralytics>=8.4.63,<9.0
+opencv-python-headless>=4.10.0,<5.0
+numpy>=1.26.0,<3.0
+pandas>=2.2.0,<4.0
+scipy>=1.13.0,<2.0
+matplotlib>=3.9.0,<4.0
+tqdm>=4.66.0,<5.0
+streamlit>=1.38.0,<2.0
+pytest>=8.3.0,<9.0

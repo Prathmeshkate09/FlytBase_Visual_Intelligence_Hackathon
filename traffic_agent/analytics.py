@@ -33,6 +33,8 @@ def clean_trajectories(
     smoothing_window: int = 5,
 ) -> pd.DataFrame:
     """Stabilize class labels, interpolate brief gaps, and smooth track points."""
+    if not np.isfinite(fps) or fps <= 0:
+        raise ValueError("fps must be a positive finite number")
     missing = REQUIRED_COLUMNS - set(raw.columns)
     if missing:
         raise ValueError(f"Missing trajectory columns: {sorted(missing)}")
@@ -96,10 +98,26 @@ def clean_trajectories(
     return pd.concat(cleaned_groups, ignore_index=True).sort_values(["frame", "track_id"])
 
 
-def calculate_object_metrics(trajectories: pd.DataFrame, fps: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+def calculate_object_metrics(
+    trajectories: pd.DataFrame,
+    fps: float,
+    raw: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return one row per track and frame-level motion values in pixel units."""
+    if not np.isfinite(fps) or fps <= 0:
+        raise ValueError("fps must be a positive finite number")
     if trajectories.empty:
         return pd.DataFrame(), trajectories.copy()
+
+    consistency_by_track: dict[int, float] = {}
+    if raw is not None:
+        required = {"track_id", "class_id"}
+        missing = required - set(raw.columns)
+        if missing:
+            raise ValueError(f"Missing raw class-consistency columns: {sorted(missing)}")
+        for raw_track_id, raw_group in raw.groupby("track_id", sort=False):
+            modal_class = raw_group["class_id"].mode().iloc[0]
+            consistency_by_track[int(raw_track_id)] = float((raw_group["class_id"] == modal_class).mean())
 
     motion_groups: list[pd.DataFrame] = []
     object_rows: list[dict[str, float | int | str]] = []
@@ -123,8 +141,13 @@ def calculate_object_metrics(trajectories: pd.DataFrame, fps: float) -> tuple[pd
         path_length = float(step_px.sum())
         duration = float(group["timestamp_s"].iloc[-1] - group["timestamp_s"].iloc[0] + dt)
         observed_ratio = float(group["observed"].mean()) if "observed" in group else 1.0
-        class_consistency = float(
-            trajectories.loc[trajectories["track_id"] == track_id, "class_id"].value_counts(normalize=True).iloc[0]
+        class_consistency = consistency_by_track.get(
+            int(track_id),
+            float(
+                trajectories.loc[trajectories["track_id"] == track_id, "class_id"]
+                .value_counts(normalize=True)
+                .iloc[0]
+            ),
         )
         object_rows.append(
             {
@@ -152,7 +175,12 @@ def calculate_object_metrics(trajectories: pd.DataFrame, fps: float) -> tuple[pd
 def calculate_timeseries(trajectories: pd.DataFrame) -> pd.DataFrame:
     if trajectories.empty:
         return pd.DataFrame()
-    observed = trajectories[trajectories.get("observed", True).astype(bool)].copy()
+    observed_mask = (
+        trajectories["observed"].astype(bool)
+        if "observed" in trajectories.columns
+        else pd.Series(True, index=trajectories.index)
+    )
+    observed = trajectories[observed_mask].copy()
     observed["second"] = np.floor(observed["timestamp_s"]).astype(int)
     counts = (
         observed.groupby(["second", "class_name"])["track_id"]
@@ -219,7 +247,7 @@ def write_analysis_outputs(
 ) -> dict[str, object]:
     raw = pd.read_csv(raw_csv)
     trajectories = clean_trajectories(raw, fps=fps)
-    object_metrics, motion = calculate_object_metrics(trajectories, fps=fps)
+    object_metrics, motion = calculate_object_metrics(trajectories, fps=fps, raw=raw)
     timeseries = calculate_timeseries(trajectories)
 
     trajectories.to_csv(output_dir / "trajectories.csv", index=False)
