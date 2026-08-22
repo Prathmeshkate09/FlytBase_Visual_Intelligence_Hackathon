@@ -42,6 +42,20 @@ def test_cross_class_vehicle_duplicates_are_merged() -> None:
     assert merged[0].source_classes == ("car", "truck")
 
 
+def test_duplicate_suppression_is_auditable() -> None:
+    car = _detection("car", 2, 0.90)
+    truck = _detection("truck", 7, 0.60, (101.0, 100.0, 151.0, 140.0))
+
+    merged, rejected = postprocess_detections(
+        [car, truck], frame_width=400, frame_height=300
+    )
+
+    assert len(merged) == 1
+    assert [(item.detection.class_name, item.reason) for item in rejected] == [
+        ("truck", "duplicate_suppressed")
+    ]
+
+
 def test_pedestrian_is_not_merged_with_overlapping_vehicle() -> None:
     pedestrian = _detection("person", 0, 0.80)
     car = _detection("car", 2, 0.90)

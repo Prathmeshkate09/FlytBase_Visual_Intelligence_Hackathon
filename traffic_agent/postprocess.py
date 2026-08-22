@@ -229,10 +229,9 @@ def _merge_cluster(cluster: list[Detection]) -> Detection:
     )
 
 
-def merge_group_duplicates(
+def _duplicate_clusters(
     detections: Iterable[Detection], config: PostprocessConfig
-) -> list[Detection]:
-    """Merge overlapping boxes only inside the same road-user association group."""
+) -> list[list[Detection]]:
     config.validate()
     items = list(detections)
     for detection in items:
@@ -267,7 +266,15 @@ def merge_group_duplicates(
     clusters: dict[int, list[Detection]] = {}
     for index, detection in enumerate(items):
         clusters.setdefault(find(index), []).append(detection)
-    merged = [_merge_cluster(cluster) for cluster in clusters.values()]
+    return list(clusters.values())
+
+
+def merge_group_duplicates(
+    detections: Iterable[Detection], config: PostprocessConfig
+) -> list[Detection]:
+    """Merge overlapping boxes only inside the same road-user association group."""
+    clusters = _duplicate_clusters(detections, config)
+    merged = [_merge_cluster(cluster) for cluster in clusters]
     return sorted(merged, key=lambda detection: detection.confidence, reverse=True)
 
 
@@ -304,5 +311,16 @@ def postprocess_detections(
             continue
         accepted.append(detection)
 
-    merged = merge_group_duplicates(accepted, active_config)
+    clusters = _duplicate_clusters(accepted, active_config)
+    merged = [_merge_cluster(cluster) for cluster in clusters]
+    for cluster in clusters:
+        if len(cluster) <= 1:
+            continue
+        winner = max(cluster, key=lambda detection: detection.confidence)
+        rejected.extend(
+            RejectedDetection(detection, "duplicate_suppressed")
+            for detection in cluster
+            if detection is not winner
+        )
+    merged.sort(key=lambda detection: detection.confidence, reverse=True)
     return merged, rejected

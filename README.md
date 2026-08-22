@@ -28,6 +28,41 @@ The command writes `tracking_audit.json` and `tracking_failures.csv`. A result
 with `verification_status: not_ground_truth_verified` must never be presented
 as formally verified tracking accuracy.
 
+## V4 Colab smoke test (new pipeline)
+
+V4 separates SAHI detection, group-aware duplicate merging, BoT-SORT
+association and lifecycle accounting. It includes pedestrians and cyclists as
+road users; car, bus and truck detector votes share one association group so a
+temporary fine-grained class change cannot create a second tracker pool.
+
+Start with 30 frames before paying the cost of a full 4K sliced-inference run:
+
+```bash
+python run_v4.py \
+  --input /content/intersection_60s.mp4 \
+  --output /content/flytbase_results/level1_v4_smoke \
+  --detection-config config/detection_v4.json \
+  --tracker-config config/botsort_drone_v4.yaml \
+  --max-seconds 1
+```
+
+The ROI is optional until a verified polygon has been drawn. Do not use the
+example full-frame ROI as evidence that roof/building false positives were
+removed. A V4 run emits:
+
+- `detections.csv`: consolidated detections before tracking.
+- `rejected_detections.csv`: rejected boxes and explicit reasons.
+- `tracks.csv`: both real observations and `observed=False` Kalman predictions.
+- `raw_tracks.csv`: observed rows only, retaining Level-2 compatibility.
+- `track_events.csv`: created, confirmed, lost, recovered, exited and expired events.
+- `track_summary.csv`: confidence-weighted final class per identity.
+- `quality_report.json`: remains `not_evaluated` until labelled evaluation passes.
+- `run_manifest.json`: input/trajectory hashes, package versions and exact configuration.
+
+SAHI at 4K is compute-heavy. After the smoke test passes, benchmark a short
+clip before changing `batch_size`; reduce it from 4 if a Colab T4 runs out of
+GPU memory.
+
 ## Engineering boundary
 
 This project separates what the pixels support from what requires calibration:
