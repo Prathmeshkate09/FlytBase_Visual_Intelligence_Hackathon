@@ -2,6 +2,32 @@
 
 Colab-ready pipeline for **Level 1 detection/tracking** and **Level 2 object insight** from aerial traffic video.
 
+## V4 revision status
+
+The submitted Level 1 and Level 2 source states are preserved in Git tags
+`submission-level1-v1` and `submission-level2-v1`. Active development happens
+on the `level1-v4` branch.
+
+V4 follows a strict dependency boundary: Level 2 must not consume a Level 1
+trajectory set until detection and identity quality have been evaluated. The
+first V4 component is a reproducible proxy audit that detects duplicate IDs,
+probable in-frame ID handoffs, raw class instability, internal track starts or
+ends, and evidence-video filtering. These proxy checks expose regressions but
+do not replace labelled precision/recall, IDF1 and HOTA evaluation.
+
+Run the audit against an existing Level 1 result:
+
+```bash
+python audit_tracks.py \
+  --raw-tracks /content/flytbase_results/level1_botsort_drone_v3/raw_tracks.csv \
+  --metadata /content/flytbase_results/level1_botsort_drone_v3/run_metadata.json \
+  --output /content/flytbase_results/level1_botsort_drone_v3/audit
+```
+
+The command writes `tracking_audit.json` and `tracking_failures.csv`. A result
+with `verification_status: not_ground_truth_verified` must never be presented
+as formally verified tracking accuracy.
+
 ## Engineering boundary
 
 This project separates what the pixels support from what requires calibration:
