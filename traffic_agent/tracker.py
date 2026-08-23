@@ -37,6 +37,25 @@ class TrackObservation:
         return ((self.x1 + self.x2) / 2.0, self.y2)
 
 
+@dataclass(frozen=True)
+class RejectedTrackPrediction:
+    """A Kalman prediction that became invalid after frame clipping."""
+
+    frame: int
+    track_id: int
+    native_track_id: int
+    association_group: str
+    raw_x1: float
+    raw_y1: float
+    raw_x2: float
+    raw_y2: float
+    clipped_x1: float
+    clipped_y1: float
+    clipped_x2: float
+    clipped_y2: float
+    reason: str
+
+
 TrackerFactory = Callable[[str], Any]
 BoxesFactory = Callable[[list[Detection], tuple[int, int]], Any]
 
@@ -72,6 +91,7 @@ class GroupedBoTSORT:
         self._global_ids: dict[tuple[str, int], int] = {}
         self._last_detection: dict[int, Detection] = {}
         self._next_global_id = 1
+        self._rejected_predictions: list[RejectedTrackPrediction] = []
 
     def _default_tracker_factory(self, association_group: str) -> Any:
         del association_group
@@ -186,6 +206,11 @@ class GroupedBoTSORT:
                 x1, y1, x2, y2 = self._clip_bounds(
                     row[:4], frame_width, frame_height
                 )
+                if x2 <= x1 or y2 <= y1:
+                    raise RuntimeError(
+                        f"BoT-SORT emitted invalid observed bounds for track {global_id}: "
+                        f"{(x1, y1, x2, y2)}"
+                    )
                 observations.append(
                     TrackObservation(
                         frame=frame_number,
@@ -219,9 +244,29 @@ class GroupedBoTSORT:
                     bounds = getattr(lost_track, "tlbr", None)
                 if bounds is None:
                     raise RuntimeError("Lost BoT-SORT track exposes no predicted bounding box")
+                raw_bounds = tuple(float(value) for value in bounds)
                 x1, y1, x2, y2 = self._clip_bounds(
-                    bounds, frame_width, frame_height
+                    raw_bounds, frame_width, frame_height
                 )
+                if x2 <= x1 or y2 <= y1:
+                    self._rejected_predictions.append(
+                        RejectedTrackPrediction(
+                            frame=frame_number,
+                            track_id=global_id,
+                            native_track_id=native_id,
+                            association_group=group,
+                            raw_x1=raw_bounds[0],
+                            raw_y1=raw_bounds[1],
+                            raw_x2=raw_bounds[2],
+                            raw_y2=raw_bounds[3],
+                            clipped_x1=x1,
+                            clipped_y1=y1,
+                            clipped_x2=x2,
+                            clipped_y2=y2,
+                            reason="invalid_after_frame_clipping",
+                        )
+                    )
+                    continue
                 observations.append(
                     TrackObservation(
                         frame=frame_number,
@@ -252,3 +297,8 @@ class GroupedBoTSORT:
                 if key in self._global_ids:
                     removed.add(self._global_ids[key])
         return removed
+
+    @property
+    def rejected_predictions(self) -> tuple[RejectedTrackPrediction, ...]:
+        return tuple(self._rejected_predictions)
+
