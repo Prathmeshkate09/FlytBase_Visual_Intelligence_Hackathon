@@ -126,3 +126,37 @@ def test_invalid_tracker_detection_index_fails_loudly() -> None:
         assert "invalid detection index" in str(error)
     else:
         raise AssertionError("invalid tracker detection index was accepted")
+
+
+def test_invalid_boundary_prediction_is_rejected_and_audited() -> None:
+    class BoundaryLostTracker(_FakeTracker):
+        def update(self, boxes: list[Detection], frame: np.ndarray) -> np.ndarray:
+            if boxes:
+                return super().update(boxes, frame)
+            self.calls.append(0)
+            self.lost_stracks = [
+                _FakeLostTrack(
+                    self.native_id, np.asarray([10.0, 100.0, 30.0, 120.0])
+                )
+            ]
+            return np.empty((0, 8), dtype=np.float32)
+
+    fake_tracker = BoundaryLostTracker()
+    adapter = GroupedBoTSORT(
+        tracker_config=None,  # type: ignore[arg-type]
+        tracker_factory=lambda group: fake_tracker,
+        boxes_factory=lambda detections, shape: detections,
+    )
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    adapter.update([_detection("car", 2, 10.0)], frame, 0)
+    rows = adapter.update([], frame, 1)
+
+    assert rows == []
+    assert len(adapter.rejected_predictions) == 1
+    rejection = adapter.rejected_predictions[0]
+    assert rejection.track_id == 1
+    assert rejection.frame == 1
+    assert rejection.reason == "invalid_after_frame_clipping"
+    assert rejection.clipped_y1 == rejection.clipped_y2 == 100.0
+
