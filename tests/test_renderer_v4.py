@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from traffic_agent.renderer_v4 import _class_lookup, _normalize_tracks
+from traffic_agent.renderer_v4 import RendererV4Config, _class_lookup, _normalize_tracks
 
 
 def _tracks() -> pd.DataFrame:
@@ -56,4 +56,10 @@ def test_class_lookup_requires_one_summary_per_final_id() -> None:
 
     with pytest.raises(ValueError, match="duplicate track IDs"):
         _class_lookup(summary)
+
+
+def test_renderer_rejects_zero_label_limit() -> None:
+    with pytest.raises(ValueError, match="max_labels_per_frame"):
+        RendererV4Config(max_labels_per_frame=0).validate()
+
 
