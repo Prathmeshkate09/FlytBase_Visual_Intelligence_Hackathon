@@ -2,6 +2,17 @@
 
 Colab-ready pipeline for **Level 1 detection/tracking** and **Level 2 object insight** from aerial traffic video.
 
+## Durable project context
+
+Future work starts with [`AGENTS.md`](AGENTS.md) and [`CODEX.md`](CODEX.md).
+The evidence-backed challenge brief, dataset registry, decision history,
+experiment log, mathematical quality gates, and machine-readable state live in
+[`docs/context/`](docs/context/README.md). Validate the local state with:
+
+```bash
+python tools/context_status.py --check-local-assets
+```
+
 ## V4 revision status
 
 The submitted Level 1 and Level 2 source states are preserved in Git tags
