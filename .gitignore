@@ -15,8 +15,8 @@ __pycache__/
 htmlcov/
 .venv/
 venv/
+Ultralytics/
 results/
 runs/
 outputs/
 data/
-

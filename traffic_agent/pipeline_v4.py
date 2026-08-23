@@ -539,7 +539,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "python": platform.python_version(),
             "ultralytics": _package_version("ultralytics"),
             "sahi": _package_version("sahi"),
-            "opencv": _package_version("opencv-python-headless"),
+            "opencv": _package_version("opencv-python"),
+            "torch": _package_version("torch"),
+            "lap": _package_version("lap"),
         },
         "outputs": {
             "detections": "detections.csv",

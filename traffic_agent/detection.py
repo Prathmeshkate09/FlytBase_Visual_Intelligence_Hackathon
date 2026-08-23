@@ -94,6 +94,7 @@ class RoadUserDetector:
                 model_path=self.config.model_path,
                 confidence_threshold=self.config.confidence,
                 device=self._sahi_device,
+                image_size=self.config.image_size,
             )
         return self._model
 
