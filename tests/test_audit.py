@@ -92,3 +92,30 @@ def test_audit_rejects_invalid_boxes() -> None:
     with pytest.raises(ValueError, match="invalid bounding boxes"):
         audit_tracks(invalid, fps=10.0, frame_width=400, frame_height=300)
 
+
+def test_audit_accepts_null_confidence_only_for_predicted_rows() -> None:
+    rows = [
+        {**_row(0, 1, x=100), "observed": True},
+        {**_row(1, 1, x=101), "observed": False, "confidence": None},
+        {**_row(2, 1, x=102), "observed": True},
+    ]
+
+    report, _ = audit_tracks(
+        pd.DataFrame(rows),
+        fps=10.0,
+        frame_width=400,
+        frame_height=300,
+        thresholds=AuditThresholds(stable_track_seconds=0.1),
+    )
+
+    assert report["metrics"]["input_rows"] == 3
+    assert report["metrics"]["observed_rows"] == 2
+    assert report["metrics"]["predicted_rows"] == 1
+    assert report["metrics"]["raw_rows"] == 2
+
+
+def test_audit_rejects_null_confidence_for_observed_rows() -> None:
+    row = {**_row(0, 1, x=100), "observed": True, "confidence": None}
+
+    with pytest.raises(ValueError, match="Observed confidence"):
+        audit_tracks(pd.DataFrame([row]), fps=10.0, frame_width=400, frame_height=300)

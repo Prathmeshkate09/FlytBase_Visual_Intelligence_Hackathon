@@ -89,7 +89,6 @@ def _validate_inputs(raw: pd.DataFrame, fps: float, frame_width: int, frame_heig
         "frame",
         "track_id",
         "class_id",
-        "confidence",
         "x1",
         "y1",
         "x2",
@@ -101,6 +100,25 @@ def _validate_inputs(raw: pd.DataFrame, fps: float, frame_width: int, frame_heig
         work[column] = pd.to_numeric(work[column], errors="raise")
         if not np.isfinite(work[column].to_numpy(dtype=float)).all():
             raise ValueError(f"Column {column} contains non-finite values")
+
+    if "observed" not in work.columns:
+        work["observed"] = True
+    elif not pd.api.types.is_bool_dtype(work["observed"]):
+        normalized = work["observed"].astype(str).str.strip().str.lower().map(
+            {"true": True, "false": False, "1": True, "0": False}
+        )
+        if normalized.isna().any():
+            invalid = sorted(work.loc[normalized.isna(), "observed"].astype(str).unique())
+            raise ValueError(f"Unsupported observed values: {invalid}")
+        work["observed"] = normalized.astype(bool)
+
+    work["confidence"] = pd.to_numeric(work["confidence"], errors="raise")
+    observed_confidence = work.loc[work["observed"], "confidence"].to_numpy(dtype=float)
+    if not np.isfinite(observed_confidence).all():
+        raise ValueError("Observed confidence contains non-finite values")
+    predicted_confidence = work.loc[~work["observed"], "confidence"].dropna().to_numpy(dtype=float)
+    if not np.isfinite(predicted_confidence).all():
+        raise ValueError("Predicted confidence contains non-finite non-null values")
 
     if work["class_name"].isna().any():
         raise ValueError("class_name contains null values")
@@ -300,12 +318,19 @@ def audit_tracks(
     active_thresholds = thresholds or AuditThresholds()
     active_thresholds.validate()
     work = _validate_inputs(raw, fps, frame_width, frame_height)
-    descriptors = _track_descriptors(work, fps)
-    first_frame = int(work["frame"].min())
-    last_frame = int(work["frame"].max())
+    observed_work = work[work["observed"]].copy()
+    if observed_work.empty:
+        raise ValueError("Cannot audit a tracking table without observed detections")
+    descriptors = _track_descriptors(observed_work, fps)
+    first_frame = int(observed_work["frame"].min())
+    last_frame = int(observed_work["frame"].max())
 
-    duplicate_observations = int(work.duplicated(["frame", "track_id"], keep=False).sum())
-    duplicate_pairs, overlapping_instances, overlapping_frame_count = _duplicate_pairs(work, active_thresholds)
+    duplicate_observations = int(
+        observed_work.duplicated(["frame", "track_id"], keep=False).sum()
+    )
+    duplicate_pairs, overlapping_instances, overlapping_frame_count = _duplicate_pairs(
+        observed_work, active_thresholds
+    )
     persistent_pairs = [
         pair
         for pair in duplicate_pairs
@@ -336,12 +361,12 @@ def audit_tracks(
     stable_ids = {
         int(item["track_id"]) for item in descriptors if item["observations"] >= stable_observations
     }
-    displayed = work[
-        work["track_id"].isin(stable_ids)
-        & (work["confidence"] >= active_thresholds.display_confidence)
+    displayed = observed_work[
+        observed_work["track_id"].isin(stable_ids)
+        & (observed_work["confidence"] >= active_thresholds.display_confidence)
     ]
     all_frames = pd.Index(range(first_frame, last_frame + 1), name="frame")
-    raw_counts = work.groupby("frame").size().reindex(all_frames, fill_value=0)
+    raw_counts = observed_work.groupby("frame").size().reindex(all_frames, fill_value=0)
     displayed_counts = displayed.groupby("frame").size().reindex(all_frames, fill_value=0)
 
     class_counts: dict[str, int] = {}
@@ -411,7 +436,7 @@ def audit_tracks(
         "internal_track_starts": bool(internal_starts),
         "internal_track_ends": bool(internal_ends),
         "unstable_classes": bool(unstable_tracks),
-        "evidence_hides_observations": len(displayed) < len(work),
+        "evidence_hides_observations": len(displayed) < len(observed_work),
     }
     if any(critical_flags.values()):
         audit_status = "failed"
@@ -436,7 +461,10 @@ def audit_tracks(
         },
         "thresholds": asdict(active_thresholds),
         "metrics": {
-            "raw_rows": int(len(work)),
+            "input_rows": int(len(work)),
+            "observed_rows": int(len(observed_work)),
+            "predicted_rows": int((~work["observed"]).sum()),
+            "raw_rows": int(len(observed_work)),
             "raw_unique_ids": int(len(descriptors)),
             "unique_ids_by_modal_class": dict(sorted(class_counts.items())),
             "median_track_duration_s": float(np.median(durations)),
@@ -458,7 +486,7 @@ def audit_tracks(
         "evidence_filter_audit": {
             "stable_track_ids": int(len(stable_ids)),
             "displayed_rows": int(len(displayed)),
-            "display_share": float(len(displayed) / len(work)),
+            "display_share": float(len(displayed) / len(observed_work)),
             "median_raw_objects_per_frame": float(raw_counts.median()),
             "median_displayed_objects_per_frame": float(displayed_counts.median()),
         },
@@ -503,4 +531,3 @@ def write_tracking_audit(
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     failures.to_csv(failures_path, index=False)
     return report
-
