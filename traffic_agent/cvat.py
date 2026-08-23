@@ -334,7 +334,9 @@ def build_cvat_interpolation_xml(
     return xml_bytes, report
 
 
-def annotation_instructions(task_name: str, clip_role: str) -> str:
+def annotation_instructions(
+    task_name: str, clip_role: str, metadata: VideoMetadata
+) -> str:
     return f"""# {task_name} annotation instructions
 
 This package contains model predictions only. They are not ground truth until
@@ -343,6 +345,7 @@ the entire clip has been reviewed and corrected in CVAT.
 Clip role: **{clip_role}**
 
 1. Create a CVAT task in **interpolation** mode using the exact source video.
+   Configure start frame `0` and stop frame `{metadata.frame_count - 1}`.
 2. Import `annotations.xml` using the **CVAT for video 1.1** format.
 3. Review every frame from beginning to end. Do not validate only the seeded boxes.
 4. Add every missing road user, delete false roof/building tracks, and repair ID switches.
@@ -388,7 +391,7 @@ def write_cvat_seed_package(
     xml_path.write_bytes(xml_bytes)
     instructions_path = output_dir / "ANNOTATION_INSTRUCTIONS.md"
     instructions_path.write_text(
-        annotation_instructions(task_name, clip_role), encoding="utf-8"
+        annotation_instructions(task_name, clip_role, metadata), encoding="utf-8"
     )
 
     manifest = {

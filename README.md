@@ -76,7 +76,8 @@ python prepare_cvat_annotations.py \
   --track-summary /content/drive/MyDrive/FlytBase/results/level1_v4_heldout/track_summary.csv \
   --output /content/drive/MyDrive/FlytBase/annotations/heldout_seed \
   --task-name FlytBase-held-out-30-45s \
-  --clip-role held-out
+  --clip-role held-out \
+  --max-frames 89
 ```
 
 The generated `cvat_seed_annotations.zip` is explicitly marked
