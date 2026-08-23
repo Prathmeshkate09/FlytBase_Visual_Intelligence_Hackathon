@@ -8,16 +8,19 @@ from typing import Iterable
 
 
 ASSOCIATION_GROUPS = {
-    "person": "pedestrian",
-    "people": "pedestrian",
-    "pedestrian": "pedestrian",
-    "bicycle": "cyclist",
-    "cyclist": "cyclist",
-    "motorcycle": "motorcycle",
-    "motorbike": "motorcycle",
-    "motor": "motorcycle",
-    "tricycle": "motorcycle",
-    "awning-tricycle": "motorcycle",
+    # Vulnerable road users share one category-agnostic association pool. This
+    # preserves identity when a tiny rider alternates between person, bicycle,
+    # and motorcycle detector labels. Final class is resolved temporally.
+    "person": "vru",
+    "people": "vru",
+    "pedestrian": "vru",
+    "bicycle": "vru",
+    "cyclist": "vru",
+    "motorcycle": "vru",
+    "motorbike": "vru",
+    "motor": "vru",
+    "tricycle": "vru",
+    "awning-tricycle": "vru",
     "car": "road_vehicle",
     "lgv": "road_vehicle",
     "van": "road_vehicle",
@@ -33,10 +36,21 @@ DEFAULT_ROAD_USER_CLASSES = tuple(ASSOCIATION_GROUPS)
 # near-identical boxes; an ordinary pedestrian overlapping a vehicle must not
 # disappear merely because the boxes intersect.
 PHYSICAL_DUPLICATE_PRIORITY = {
-    "pedestrian": 0,
-    "cyclist": 1,
+    "vru": 1,
     "road_vehicle": 2,
-    "motorcycle": 3,
+}
+
+VRU_CLASS_PRIORITY = {
+    "person": 0,
+    "people": 0,
+    "pedestrian": 0,
+    "bicycle": 1,
+    "cyclist": 1,
+    "motorcycle": 2,
+    "motorbike": 2,
+    "motor": 2,
+    "tricycle": 2,
+    "awning-tricycle": 2,
 }
 
 
@@ -113,6 +127,9 @@ class PostprocessConfig:
     physical_duplicate_iou_threshold: float = 0.90
     physical_duplicate_ios_threshold: float = 0.98
     physical_duplicate_area_ratio_threshold: float = 0.80
+    suppress_rider_duplicates: bool = True
+    rider_overlap_ios_threshold: float = 0.35
+    rider_ground_margin_ratio: float = 0.10
 
     def validate(self) -> None:
         if not self.allowed_class_names:
@@ -129,6 +146,10 @@ class PostprocessConfig:
             raise ValueError("physical_duplicate_ios_threshold must be in (0, 1]")
         if not 0.0 < self.physical_duplicate_area_ratio_threshold <= 1.0:
             raise ValueError("physical_duplicate_area_ratio_threshold must be in (0, 1]")
+        if not 0.0 < self.rider_overlap_ios_threshold <= 1.0:
+            raise ValueError("rider_overlap_ios_threshold must be in (0, 1]")
+        if not 0.0 <= self.rider_ground_margin_ratio <= 1.0:
+            raise ValueError("rider_ground_margin_ratio must be in [0, 1]")
 
 
 def _point_in_polygon(point: tuple[float, float], polygon: tuple[tuple[float, float], ...]) -> bool:
@@ -227,7 +248,15 @@ def box_ios(first: Detection, second: Detection) -> float:
 def _merge_cluster(
     cluster: list[Detection], *, winner: Detection | None = None
 ) -> Detection:
-    winner = winner or max(cluster, key=lambda detection: detection.confidence)
+    winner = winner or max(
+        cluster,
+        key=lambda detection: (
+            VRU_CLASS_PRIORITY.get(detection.class_name.lower(), -1)
+            if detection.association_group == "vru"
+            else 0,
+            detection.confidence,
+        ),
+    )
     weights = [max(detection.confidence, 1e-6) for detection in cluster]
     total_weight = sum(weights)
 
@@ -355,6 +384,65 @@ def _physical_winner(cluster: list[Detection]) -> Detection:
     )
 
 
+def _is_rider_duplicate(
+    pedestrian: Detection,
+    motorcycle: Detection,
+    config: PostprocessConfig,
+) -> bool:
+    """Return whether a pedestrian box represents a motorcycle rider.
+
+    Aerial detectors commonly emit one box for the motorcycle and another for
+    its rider. Counting both boxes creates two identities for one physical road
+    user. Requiring both box overlap and the rider ground point to fall inside
+    the motorcycle footprint preserves a person merely standing beside it.
+    """
+    if pedestrian.class_name.lower() not in {"person", "people", "pedestrian"}:
+        return False
+    if motorcycle.class_name.lower() not in {
+        "motorcycle",
+        "motorbike",
+        "motor",
+        "tricycle",
+        "awning-tricycle",
+    }:
+        return False
+    if box_ios(pedestrian, motorcycle) < config.rider_overlap_ios_threshold:
+        return False
+    ground_x, ground_y = pedestrian.ground_point
+    vertical_margin = motorcycle.height * config.rider_ground_margin_ratio
+    return (
+        motorcycle.x1 <= ground_x <= motorcycle.x2
+        and motorcycle.y1 <= ground_y <= motorcycle.y2 + vertical_margin
+    )
+
+
+def _suppress_rider_duplicates(
+    detections: list[Detection], config: PostprocessConfig
+) -> tuple[list[Detection], list[RejectedDetection]]:
+    if not config.suppress_rider_duplicates:
+        return detections, []
+    motorcycles = [
+        detection
+        for detection in detections
+        if detection.class_name.lower()
+        in {"motorcycle", "motorbike", "motor", "tricycle", "awning-tricycle"}
+    ]
+    if not motorcycles:
+        return detections, []
+
+    accepted: list[Detection] = []
+    rejected: list[RejectedDetection] = []
+    for detection in detections:
+        if any(
+            _is_rider_duplicate(detection, motorcycle, config)
+            for motorcycle in motorcycles
+        ):
+            rejected.append(RejectedDetection(detection, "rider_duplicate_suppressed"))
+        else:
+            accepted.append(detection)
+    return accepted, rejected
+
+
 def merge_group_duplicates(
     detections: Iterable[Detection], config: PostprocessConfig
 ) -> list[Detection]:
@@ -409,7 +497,12 @@ def postprocess_detections(
             if detection is not winner
         )
 
-    physical_clusters = _physical_duplicate_clusters(group_merged, active_config)
+    rider_filtered, rider_rejections = _suppress_rider_duplicates(
+        group_merged, active_config
+    )
+    rejected.extend(rider_rejections)
+
+    physical_clusters = _physical_duplicate_clusters(rider_filtered, active_config)
     merged: list[Detection] = []
     for cluster in physical_clusters:
         winner = _physical_winner(cluster)

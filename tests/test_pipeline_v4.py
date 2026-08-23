@@ -10,10 +10,13 @@ import pytest
 from traffic_agent.lifecycle import LifecycleState
 from traffic_agent.pipeline_v4 import (
     PipelineV4Config,
+    _apply_confidence_thresholds,
     _confirmed_track_ids,
     _final_summary_rows,
+    _load_cached_detections,
     load_detector_config,
 )
+from traffic_agent.postprocess import Detection
 
 
 def test_load_detector_config_normalizes_class_ids(tmp_path: Path) -> None:
@@ -44,6 +47,46 @@ def test_pipeline_config_rejects_missing_inputs(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError, match="Video not found"):
         config.validate()
+
+
+def test_cached_detection_loader_and_class_threshold_filter(tmp_path: Path) -> None:
+    path = tmp_path / "detections.csv"
+    path.write_text(
+        "frame,class_id,class_name,confidence,x1,y1,x2,y2,source,source_classes,merge_count\n"
+        "0,0,pedestrian,0.19,1,2,11,22,standard,people,1\n"
+        "0,3,motorcycle,0.81,5,8,20,24,standard,motor,1\n",
+        encoding="utf-8",
+    )
+    grouped = _load_cached_detections(path)
+    config = load_detector_config(
+        _write_detector_config(tmp_path, {"pedestrian": 0.20, "motorcycle": 0.50})
+    )
+
+    accepted, rejected = _apply_confidence_thresholds(grouped[0], config)
+
+    assert [item.class_name for item in accepted] == ["motorcycle"]
+    assert [item.reason for item in rejected] == [
+        "below_class_confidence_threshold"
+    ]
+
+
+def _write_detector_config(
+    directory: Path, thresholds: dict[str, float]
+) -> Path:
+    path = directory / "thresholds.json"
+    path.write_text(
+        json.dumps(
+            {
+                "model_path": "weights.pt",
+                "class_ids": [0, 3],
+                "use_sahi": False,
+                "confidence": 0.05,
+                "class_confidence_thresholds": thresholds,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_confirmation_filter_retains_complete_history_only_for_stable_tracks() -> None:

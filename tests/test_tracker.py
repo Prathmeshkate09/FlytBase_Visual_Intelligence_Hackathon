@@ -80,9 +80,9 @@ def test_association_groups_have_distinct_global_ids() -> None:
     )
 
     assert len(rows) == 2
-    assert set(trackers) == {"cyclist", "motorcycle", "pedestrian", "road_vehicle"}
+    assert set(trackers) == {"road_vehicle", "vru"}
     assert len({row.track_id for row in rows}) == 2
-    assert {row.association_group for row in rows} == {"pedestrian", "road_vehicle"}
+    assert {row.association_group for row in rows} == {"vru", "road_vehicle"}
 
 
 def test_empty_group_frame_advances_tracker_and_emits_occlusion() -> None:

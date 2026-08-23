@@ -31,6 +31,7 @@ class PipelineV4Config:
     tracker_config: Path = Path("config/botsort_drone_v4.yaml")
     road_user_roi: Path | None = None
     exit_roi: Path | None = None
+    cached_detections: Path | None = None
     max_seconds: float | None = None
     confirmation_observations: int = 3
     max_prediction_frames: int = 15
@@ -47,6 +48,10 @@ class PipelineV4Config:
             raise FileNotFoundError(f"Road-user ROI not found: {self.road_user_roi}")
         if self.exit_roi is not None and not self.exit_roi.exists():
             raise FileNotFoundError(f"Exit ROI not found: {self.exit_roi}")
+        if self.cached_detections is not None and not self.cached_detections.exists():
+            raise FileNotFoundError(
+                f"Cached detections file not found: {self.cached_detections}"
+            )
         if self.max_seconds is not None and self.max_seconds <= 0:
             raise ValueError("max_seconds must be positive")
         if self.max_prediction_frames < 0:
@@ -216,6 +221,64 @@ def _rejected_row(
     return row
 
 
+def _load_cached_detections(path: Path) -> dict[int, list[Detection]]:
+    required = {
+        "frame",
+        "class_id",
+        "class_name",
+        "confidence",
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+    }
+    grouped: dict[int, list[Detection]] = {}
+    with path.open("r", newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        missing = required - set(reader.fieldnames or ())
+        if missing:
+            raise ValueError(
+                f"Cached detections are missing columns: {sorted(missing)}"
+            )
+        for row in reader:
+            source_classes = tuple(
+                value for value in str(row.get("source_classes", "")).split("+") if value
+            )
+            detection = Detection(
+                x1=float(row["x1"]),
+                y1=float(row["y1"]),
+                x2=float(row["x2"]),
+                y2=float(row["y2"]),
+                confidence=float(row["confidence"]),
+                class_id=int(row["class_id"]),
+                class_name=str(row["class_name"]),
+                source=str(row.get("source") or "cached"),
+                source_classes=source_classes,
+                merge_count=int(row.get("merge_count") or 1),
+            )
+            detection.validate()
+            grouped.setdefault(int(row["frame"]), []).append(detection)
+    if not grouped:
+        raise ValueError(f"Cached detections file is empty: {path}")
+    return grouped
+
+
+def _apply_confidence_thresholds(
+    detections: Iterable[Detection], detector_config: DetectorConfig
+) -> tuple[list[Detection], list[RejectedDetection]]:
+    accepted: list[Detection] = []
+    rejected: list[RejectedDetection] = []
+    for detection in detections:
+        threshold = detector_config.confidence_threshold_for(detection.class_name)
+        if detection.confidence < threshold:
+            rejected.append(
+                RejectedDetection(detection, "below_class_confidence_threshold")
+            )
+        else:
+            accepted.append(detection)
+    return accepted, rejected
+
+
 def _write_rows(path: Path, fields: list[str], rows: Iterable[dict[str, Any]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
@@ -297,6 +360,11 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
                 _resolve_project_path(config.road_user_roi) if config.road_user_roi else None
             ),
             "exit_roi": _resolve_project_path(config.exit_roi) if config.exit_roi else None,
+            "cached_detections": (
+                _resolve_project_path(config.cached_detections)
+                if config.cached_detections
+                else None
+            ),
         }
     )
     config.validate()
@@ -320,7 +388,14 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         maximum_frames = min(source_frames, int(config.max_seconds * fps))
 
     detector_config = load_detector_config(config.detection_config)
-    detector = RoadUserDetector(detector_config)
+    detector = (
+        None if config.cached_detections else RoadUserDetector(detector_config)
+    )
+    cached_detections = (
+        _load_cached_detections(config.cached_detections)
+        if config.cached_detections
+        else None
+    )
     tracker = GroupedBoTSORT(
         config.tracker_config,
         device=detector_config.device,
@@ -350,9 +425,16 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             if not success:
                 break
             final_frame = frame_number
-            raw_detections = detector.predict(frame)
+            raw_detections = (
+                cached_detections.get(frame_number, [])
+                if cached_detections is not None
+                else detector.predict(frame)
+            )
+            thresholded_detections, threshold_rejections = _apply_confidence_thresholds(
+                raw_detections, detector_config
+            )
             detections, rejected = postprocess_detections(
-                raw_detections,
+                thresholded_detections,
                 frame_width=width,
                 frame_height=height,
                 config=PostprocessConfig(),
@@ -369,6 +451,10 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             )
 
             detection_rows.extend(_detection_row(item, frame_number, fps) for item in detections)
+            rejected_rows.extend(
+                _rejected_row(item, frame_number, fps)
+                for item in threshold_rejections
+            )
             rejected_rows.extend(_rejected_row(item, frame_number, fps) for item in rejected)
             rows = [_track_row(item, fps) for item in observations]
             track_rows.extend(rows)
@@ -550,6 +636,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         "run_id": run_id,
         "quality_status": "not_evaluated",
         "input_video_sha256": input_hash,
+        "cached_detections_sha256": (
+            _sha256(config.cached_detections) if config.cached_detections else None
+        ),
         "tracks_sha256": trajectory_hash,
         "source": {
             "video": str(config.input_video),
@@ -567,6 +656,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "tracker_config": str(config.tracker_config),
             "road_user_roi": str(config.road_user_roi) if config.road_user_roi else None,
             "exit_roi": str(config.exit_roi) if config.exit_roi else None,
+            "cached_detections": (
+                str(config.cached_detections) if config.cached_detections else None
+            ),
         },
         "versions": {
             "python": platform.python_version(),

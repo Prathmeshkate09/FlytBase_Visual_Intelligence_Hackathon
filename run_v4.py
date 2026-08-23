@@ -9,7 +9,7 @@ from traffic_agent.pipeline_v4 import PipelineV4Config, run_pipeline_v4
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the V4 SAHI + grouped BoT-SORT road-user pipeline."
+        description="Run the V4 aerial detector + grouped BoT-SORT road-user pipeline."
     )
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -21,6 +21,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--road-user-roi", type=Path, default=None)
     parser.add_argument("--exit-roi", type=Path, default=None)
+    parser.add_argument(
+        "--cached-detections",
+        type=Path,
+        default=None,
+        help="Replay a prior detections.csv without running detector inference.",
+    )
     parser.add_argument("--max-seconds", type=float, default=None)
     parser.add_argument("--confirmation-observations", type=int, default=3)
     parser.add_argument(
@@ -47,6 +53,7 @@ def main() -> None:
             tracker_config=args.tracker_config,
             road_user_roi=args.road_user_roi,
             exit_roi=args.exit_roi,
+            cached_detections=args.cached_detections,
             max_seconds=args.max_seconds,
             confirmation_observations=args.confirmation_observations,
             max_prediction_frames=args.max_prediction_frames,

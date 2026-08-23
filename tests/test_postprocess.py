@@ -63,7 +63,7 @@ def test_pedestrian_is_not_merged_with_overlapping_vehicle() -> None:
     merged = merge_group_duplicates([pedestrian, car], PostprocessConfig())
 
     assert len(merged) == 2
-    assert {item.association_group for item in merged} == {"pedestrian", "road_vehicle"}
+    assert {item.association_group for item in merged} == {"vru", "road_vehicle"}
 
 
 def test_near_identical_cross_group_duplicate_prefers_vehicle() -> None:
@@ -92,6 +92,32 @@ def test_contained_pedestrian_is_not_suppressed_as_vehicle_duplicate() -> None:
 
     assert len(merged) == 2
     assert not rejected
+
+
+def test_motorcycle_rider_is_suppressed_as_one_physical_road_user() -> None:
+    pedestrian = _detection("pedestrian", 0, 0.72, (12.0, 8.0, 28.0, 32.0))
+    motorcycle = _detection("motorcycle", 3, 0.81, (10.0, 16.0, 32.0, 36.0))
+
+    accepted, rejected = postprocess_detections(
+        [pedestrian, motorcycle], frame_width=100, frame_height=100
+    )
+
+    assert [item.class_name for item in accepted] == ["motorcycle"]
+    assert [(item.detection.class_name, item.reason) for item in rejected] == [
+        ("pedestrian", "rider_duplicate_suppressed")
+    ]
+
+
+def test_pedestrian_beside_motorcycle_is_preserved() -> None:
+    pedestrian = _detection("pedestrian", 0, 0.72, (0.0, 8.0, 18.0, 34.0))
+    motorcycle = _detection("motorcycle", 3, 0.81, (12.0, 16.0, 34.0, 36.0))
+
+    accepted, rejected = postprocess_detections(
+        [pedestrian, motorcycle], frame_width=100, frame_height=100
+    )
+
+    assert {item.class_name for item in accepted} == {"pedestrian", "motorcycle"}
+    assert rejected == []
 
 
 def test_ios_merges_tile_boundary_box_containment() -> None:
