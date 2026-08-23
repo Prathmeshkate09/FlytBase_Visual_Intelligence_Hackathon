@@ -41,6 +41,8 @@ class RendererV4Config:
     trail_length: int = 20
     box_thickness: int = 2
     label_scale: float = 0.42
+    max_labels_per_frame: int | None = None
+    label_occluded: bool = True
 
     def validate(self) -> None:
         if self.max_width < 320:
@@ -51,6 +53,8 @@ class RendererV4Config:
             raise ValueError("box_thickness must be positive")
         if self.label_scale <= 0:
             raise ValueError("label_scale must be positive")
+        if self.max_labels_per_frame is not None and self.max_labels_per_frame < 1:
+            raise ValueError("max_labels_per_frame must be positive when provided")
 
 
 def _normalize_tracks(tracks: pd.DataFrame) -> pd.DataFrame:
@@ -260,7 +264,8 @@ def render_tracking_video(
     )
     rendered_rows = 0
     labels_drawn = 0
-    labels_omitted = 0
+    labels_omitted_for_collision = 0
+    labels_suppressed_by_mode = 0
     rendered_frames = 0
 
     try:
@@ -276,6 +281,13 @@ def render_tracking_video(
             observed_count = 0
             occluded_count = 0
             if frame_rows is not None:
+                label_ids = set(int(value) for value in frame_rows["track_id"])
+                if active.max_labels_per_frame is not None:
+                    ranked = frame_rows.assign(
+                        _label_area=(frame_rows["x2"] - frame_rows["x1"])
+                        * (frame_rows["y2"] - frame_rows["y1"])
+                    ).nlargest(active.max_labels_per_frame, "_label_area")
+                    label_ids = set(int(value) for value in ranked["track_id"])
                 for row in frame_rows.itertuples(index=False):
                     track_id = int(row.track_id)
                     class_name = classes[track_id]
@@ -309,17 +321,23 @@ def render_tracking_video(
                     for start, end in zip(points[:-1], points[1:]):
                         cv2.line(frame, start, end, colour, 1, cv2.LINE_AA)
                     state = "obs" if observed else "occ"
-                    if _draw_label(
-                        frame,
-                        f"#{track_id} {class_name} {state}",
-                        bounds,
-                        colour,
-                        occupied,
-                        active.label_scale,
-                    ):
-                        labels_drawn += 1
+                    should_label = track_id in label_ids and (
+                        observed or active.label_occluded
+                    )
+                    if should_label:
+                        if _draw_label(
+                            frame,
+                            f"#{track_id} {class_name} {state}",
+                            bounds,
+                            colour,
+                            occupied,
+                            active.label_scale,
+                        ):
+                            labels_drawn += 1
+                        else:
+                            labels_omitted_for_collision += 1
                     else:
-                        labels_omitted += 1
+                        labels_suppressed_by_mode += 1
                     rendered_rows += 1
 
             active_count = observed_count + occluded_count
@@ -357,10 +375,12 @@ def render_tracking_video(
         "track_rows": len(tracks),
         "rendered_box_rows": rendered_rows,
         "labels_drawn": labels_drawn,
-        "labels_omitted_for_collision": labels_omitted,
+        "labels_omitted_for_collision": labels_omitted_for_collision,
+        "labels_suppressed_by_mode": labels_suppressed_by_mode,
         "completeness_passed": rendered_rows == len(tracks),
     }
     destination = report_path or output_path.with_suffix(".json")
     destination.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
+
 
