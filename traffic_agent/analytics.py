@@ -89,7 +89,7 @@ def clean_trajectories(
             expanded = chunk.set_index("frame").reindex(frame_index)
             expanded.index.name = "frame"
             expanded["observed"] = (
-                source_observed.reindex(frame_index).fillna(False).astype(bool)
+                source_observed.reindex(frame_index, fill_value=False).astype(bool)
                 if source_observed is not None
                 else expanded["track_id"].notna()
             )
