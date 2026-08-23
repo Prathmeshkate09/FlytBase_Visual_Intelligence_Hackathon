@@ -10,6 +10,7 @@ import pytest
 from traffic_agent.lifecycle import LifecycleState
 from traffic_agent.pipeline_v4 import (
     PipelineV4Config,
+    _confirmed_track_ids,
     _final_summary_rows,
     load_detector_config,
 )
@@ -43,6 +44,16 @@ def test_pipeline_config_rejects_missing_inputs(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError, match="Video not found"):
         config.validate()
+
+
+def test_confirmation_filter_retains_complete_history_only_for_stable_tracks() -> None:
+    summaries = [
+        {"track_id": 10, "observation_count": 2},
+        {"track_id": 20, "observation_count": 3},
+        {"track_id": 30, "observation_count": 8},
+    ]
+
+    assert _confirmed_track_ids(summaries, 3) == {20, 30}
 
 
 def test_final_summary_aggregates_stitched_source_ids() -> None:

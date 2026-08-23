@@ -1,0 +1,38 @@
+{
+  "model_path": "models/visdrone_yolo26l_best.pt",
+  "device": "0",
+  "confidence": 0.05,
+  "iou": 0.5,
+  "class_ids": [0, 1, 2, 3, 4, 5, 8, 9],
+  "image_size": 1920,
+  "use_sahi": false,
+  "slice_height": 1280,
+  "slice_width": 1280,
+  "overlap_height_ratio": 0.2,
+  "overlap_width_ratio": 0.2,
+  "batch_size": 1,
+  "perform_standard_prediction": true,
+  "postprocess_type": "GREEDYNMM",
+  "postprocess_match_metric": "IOS",
+  "postprocess_match_threshold": 0.5,
+  "postprocess_class_agnostic": false,
+  "class_name_map": {
+    "pedestrian": "pedestrian",
+    "people": "pedestrian",
+    "bicycle": "bicycle",
+    "car": "car",
+    "van": "lgv",
+    "truck": "truck",
+    "bus": "bus",
+    "motor": "motorcycle"
+  },
+  "class_confidence_thresholds": {
+    "pedestrian": 0.12,
+    "bicycle": 0.1,
+    "car": 0.08,
+    "lgv": 0.08,
+    "truck": 0.08,
+    "bus": 0.08,
+    "motorcycle": 0.1
+  }
+}

@@ -146,6 +146,22 @@ preserves Kaggle's already-loaded Pillow and NumPy modules and avoids an
 in-process package mismatch while retaining the matching CUDA-enabled
 `torchvision` wheel.
 
+### Aerial-domain Level-1 experiment
+
+The default GPU experiment now uses the public
+`dronefreak/visdrone-yolov26l` checkpoint rather than a generic COCO-only
+checkpoint. The notebook pins SHA256
+`0a8be5595dd955433c3d72a8fd951eadc886052a2034c18c0171827a2e5cf4f2`
+before loading it. VisDrone classes are mapped into the challenge taxonomy:
+`people` becomes `pedestrian`, `van` becomes `lgv`, and `motor` becomes
+`motorcycle`.
+
+The first controlled run uses the 89-frame clip, full-frame inference at 1920
+pixels, the scene road-user ROI, three-observation confirmation, and a maximum
+of 15 displayed Kalman-only frames. Kaggle writes the evidence video and a
+result ZIP directly under `/kaggle/working` so they appear before the large
+repository/file inventory in CLI downloads.
+
 ## Saving and downloading results
 
 Use **Save Version** in Kaggle after a successful run. Kaggle preserves files

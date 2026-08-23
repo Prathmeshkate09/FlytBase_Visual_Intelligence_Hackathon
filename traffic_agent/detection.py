@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,8 @@ class DetectorConfig:
     postprocess_match_metric: str = "IOS"
     postprocess_match_threshold: float = 0.50
     postprocess_class_agnostic: bool = False
+    class_name_map: dict[str, str] = field(default_factory=dict)
+    class_confidence_thresholds: dict[str, float] = field(default_factory=dict)
 
     def validate(self) -> None:
         if not self.model_path:
@@ -60,6 +62,29 @@ class DetectorConfig:
             raise ValueError("SAHI postprocess_match_metric must be IOU or IOS")
         if not 0.0 < self.postprocess_match_threshold <= 1.0:
             raise ValueError("postprocess_match_threshold must be in (0, 1]")
+        for source_name, target_name in self.class_name_map.items():
+            if not str(source_name).strip() or not str(target_name).strip():
+                raise ValueError("class_name_map keys and values cannot be empty")
+        for class_name, threshold in self.class_confidence_thresholds.items():
+            if not str(class_name).strip():
+                raise ValueError("class_confidence_thresholds keys cannot be empty")
+            if not 0.0 <= float(threshold) <= 1.0:
+                raise ValueError("class confidence thresholds must be in [0, 1]")
+
+    def canonical_class_name(self, raw_class_name: str) -> str:
+        normalized = raw_class_name.strip().lower()
+        mapping = {
+            str(source).strip().lower(): str(target).strip().lower()
+            for source, target in self.class_name_map.items()
+        }
+        return mapping.get(normalized, normalized)
+
+    def confidence_threshold_for(self, canonical_class_name: str) -> float:
+        thresholds = {
+            str(name).strip().lower(): float(value)
+            for name, value in self.class_confidence_thresholds.items()
+        }
+        return max(self.confidence, thresholds.get(canonical_class_name.lower(), 0.0))
 
 
 class RoadUserDetector:
@@ -124,7 +149,10 @@ class RoadUserDetector:
         classes = boxes.cls.detach().cpu().numpy().astype(int)
         detections: list[Detection] = []
         for bounds, confidence, class_id in zip(coordinates, confidences, classes):
-            class_name = str(result.names[int(class_id)]).lower()
+            raw_class_name = str(result.names[int(class_id)]).lower()
+            class_name = self.config.canonical_class_name(raw_class_name)
+            if float(confidence) < self.config.confidence_threshold_for(class_name):
+                continue
             detections.append(
                 Detection(
                     x1=float(bounds[0]),
@@ -135,7 +163,7 @@ class RoadUserDetector:
                     class_id=int(class_id),
                     class_name=class_name,
                     source="standard",
-                    source_classes=(class_name,),
+                    source_classes=(raw_class_name,),
                 )
             )
         return detections
@@ -170,7 +198,11 @@ class RoadUserDetector:
             class_id = int(prediction.category.id)
             if class_id not in allowed_ids:
                 continue
-            class_name = str(prediction.category.name).lower()
+            raw_class_name = str(prediction.category.name).lower()
+            class_name = self.config.canonical_class_name(raw_class_name)
+            confidence = float(prediction.score.value)
+            if confidence < self.config.confidence_threshold_for(class_name):
+                continue
             x1, y1, x2, y2 = (float(value) for value in prediction.bbox.to_xyxy())
             detections.append(
                 Detection(
@@ -178,11 +210,11 @@ class RoadUserDetector:
                     y1=y1,
                     x2=x2,
                     y2=y2,
-                    confidence=float(prediction.score.value),
+                    confidence=confidence,
                     class_id=class_id,
                     class_name=class_name,
                     source="sahi",
-                    source_classes=(class_name,),
+                    source_classes=(raw_class_name,),
                 )
             )
         return detections

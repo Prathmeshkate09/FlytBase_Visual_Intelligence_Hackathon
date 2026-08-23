@@ -24,6 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-seconds", type=float, default=None)
     parser.add_argument("--confirmation-observations", type=int, default=3)
     parser.add_argument(
+        "--max-prediction-frames",
+        type=int,
+        default=15,
+        help="Write Kalman-only boxes for at most this many frames while retaining the internal track ID.",
+    )
+    parser.add_argument(
         "--disable-offline-stitching",
         action="store_true",
         help="Keep native BoT-SORT IDs in the final trajectory files.",
@@ -43,6 +49,7 @@ def main() -> None:
             exit_roi=args.exit_roi,
             max_seconds=args.max_seconds,
             confirmation_observations=args.confirmation_observations,
+            max_prediction_frames=args.max_prediction_frames,
             enable_offline_stitching=not args.disable_offline_stitching,
         )
     )

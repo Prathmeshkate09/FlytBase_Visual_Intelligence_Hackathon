@@ -9,13 +9,18 @@ from typing import Iterable
 
 ASSOCIATION_GROUPS = {
     "person": "pedestrian",
+    "people": "pedestrian",
     "pedestrian": "pedestrian",
     "bicycle": "cyclist",
     "cyclist": "cyclist",
     "motorcycle": "motorcycle",
     "motorbike": "motorcycle",
+    "motor": "motorcycle",
+    "tricycle": "motorcycle",
+    "awning-tricycle": "motorcycle",
     "car": "road_vehicle",
     "lgv": "road_vehicle",
+    "van": "road_vehicle",
     "hgv": "road_vehicle",
     "bus": "road_vehicle",
     "truck": "road_vehicle",

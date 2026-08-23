@@ -24,11 +24,16 @@ REQUIRED_TRACK_COLUMNS = {
 
 CLASS_COLOURS = {
     "person": (255, 90, 220),
+    "people": (255, 90, 220),
     "pedestrian": (255, 90, 220),
     "bicycle": (255, 220, 50),
     "cyclist": (255, 220, 50),
     "motorcycle": (40, 220, 255),
+    "motor": (40, 220, 255),
     "car": (255, 170, 50),
+    "lgv": (255, 190, 80),
+    "van": (255, 190, 80),
+    "hgv": (70, 220, 90),
     "bus": (210, 80, 255),
     "truck": (70, 220, 90),
     "vehicle": (255, 170, 50),

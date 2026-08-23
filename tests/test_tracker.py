@@ -128,6 +128,26 @@ def test_invalid_tracker_detection_index_fails_loudly() -> None:
         raise AssertionError("invalid tracker detection index was accepted")
 
 
+def test_old_prediction_is_audited_but_not_rendered() -> None:
+    fake_tracker = _FakeTracker()
+    adapter = GroupedBoTSORT(
+        tracker_config=None,  # type: ignore[arg-type]
+        max_prediction_frames=1,
+        tracker_factory=lambda group: fake_tracker,
+        boxes_factory=lambda detections, shape: detections,
+    )
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    adapter.update([_detection("car", 2, 10.0)], frame, 0)
+    recent_prediction = adapter.update([], frame, 1)
+    old_prediction = adapter.update([], frame, 2)
+
+    assert len(recent_prediction) == 1
+    assert recent_prediction[0].observed is False
+    assert old_prediction == []
+    assert adapter.rejected_predictions[-1].reason == "prediction_age_exceeded"
+
+
 def test_invalid_boundary_prediction_is_rejected_and_audited() -> None:
     class BoundaryLostTracker(_FakeTracker):
         def update(self, boxes: list[Detection], frame: np.ndarray) -> np.ndarray:

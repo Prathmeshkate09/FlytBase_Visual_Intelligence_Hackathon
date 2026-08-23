@@ -33,6 +33,7 @@ class PipelineV4Config:
     exit_roi: Path | None = None
     max_seconds: float | None = None
     confirmation_observations: int = 3
+    max_prediction_frames: int = 15
     enable_offline_stitching: bool = True
 
     def validate(self) -> None:
@@ -48,6 +49,8 @@ class PipelineV4Config:
             raise FileNotFoundError(f"Exit ROI not found: {self.exit_roi}")
         if self.max_seconds is not None and self.max_seconds <= 0:
             raise ValueError("max_seconds must be positive")
+        if self.max_prediction_frames < 0:
+            raise ValueError("max_prediction_frames cannot be negative")
         LifecycleConfig(self.confirmation_observations).validate()
 
 
@@ -272,6 +275,18 @@ def _final_summary_rows(
     return summaries
 
 
+def _confirmed_track_ids(
+    summaries: Iterable[dict[str, Any]], minimum_observations: int
+) -> set[int]:
+    if minimum_observations < 1:
+        raise ValueError("minimum_observations must be positive")
+    return {
+        int(summary["track_id"])
+        for summary in summaries
+        if int(summary["observation_count"]) >= minimum_observations
+    }
+
+
 def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
     config = PipelineV4Config(
         **{
@@ -307,7 +322,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
     detector_config = load_detector_config(config.detection_config)
     detector = RoadUserDetector(detector_config)
     tracker = GroupedBoTSORT(
-        config.tracker_config, device=detector_config.device
+        config.tracker_config,
+        device=detector_config.device,
+        max_prediction_frames=config.max_prediction_frames,
     )
     road_roi = RoadUserROI.from_json(config.road_user_roi) if config.road_user_roi else None
     exit_roi = RoadUserROI.from_json(config.exit_roi) if config.exit_roi else None
@@ -368,20 +385,31 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
 
     native_frame = pd.DataFrame(track_rows, columns=TRACK_FIELDS)
     if native_frame.empty:
-        final_frame_table = native_frame.copy()
+        stitched_frame_table = native_frame.copy()
         stitch_table = pd.DataFrame(columns=STITCH_FIELDS)
     elif config.enable_offline_stitching:
-        final_frame_table, stitch_table = stitch_tracks(
+        stitched_frame_table, stitch_table = stitch_tracks(
             native_frame, StitchingConfig()
         )
     else:
-        final_frame_table = native_frame.copy()
+        stitched_frame_table = native_frame.copy()
         stitch_table = pd.DataFrame(columns=STITCH_FIELDS)
+    all_summary_rows = _final_summary_rows(stitched_frame_table, native_summaries)
+    confirmed_final_ids = _confirmed_track_ids(
+        all_summary_rows, config.confirmation_observations
+    )
+    final_frame_table = stitched_frame_table[
+        stitched_frame_table["track_id"].isin(confirmed_final_ids)
+    ].copy()
     final_track_rows = final_frame_table.to_dict("records")
     final_observed_rows = final_frame_table[
         final_frame_table["observed"].astype(bool)
     ].to_dict("records")
-    final_summary_rows = _final_summary_rows(final_frame_table, native_summaries)
+    final_summary_rows = [
+        summary
+        for summary in all_summary_rows
+        if int(summary["track_id"]) in confirmed_final_ids
+    ]
     source_to_final = {
         int(source): int(final_track)
         for source, final_track in final_frame_table[
@@ -400,9 +428,12 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "source_track_id": int(row["track_id"]),
         }
         for row in native_event_rows
+        if int(row["track_id"]) in source_to_final
     ]
     for stitch in stitch_table.to_dict("records"):
         new_track_id = int(stitch["new_track_id"])
+        if new_track_id not in source_to_final:
+            continue
         start_frame = int(
             final_frame_table.loc[
                 final_frame_table["source_track_id"] == new_track_id, "frame"
@@ -504,6 +535,8 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "native_unique_tracks": len(native_summaries),
             "stitched_tracklets": len(stitch_table),
             "unique_tracks": len(final_summary_rows),
+            "discarded_tentative_tracks": len(all_summary_rows)
+            - len(final_summary_rows),
             "internal_expirations": sum(
                 summary["state"] == "expired" for summary in final_summary_rows
             ),

@@ -75,11 +75,15 @@ class GroupedBoTSORT:
         tracker_config: Path,
         *,
         device: str = "0",
+        max_prediction_frames: int = 15,
         tracker_factory: TrackerFactory | None = None,
         boxes_factory: BoxesFactory | None = None,
     ) -> None:
+        if max_prediction_frames < 0:
+            raise ValueError("max_prediction_frames cannot be negative")
         self.tracker_config = tracker_config
         self.device = device
+        self.max_prediction_frames = max_prediction_frames
         self._tracker_factory = tracker_factory or self._default_tracker_factory
         self._boxes_factory = boxes_factory or self._default_boxes_factory
         # Ultralytics' native track counter is shared. Construct every pool now
@@ -90,6 +94,7 @@ class GroupedBoTSORT:
         self._started_groups: set[str] = set()
         self._global_ids: dict[tuple[str, int], int] = {}
         self._last_detection: dict[int, Detection] = {}
+        self._last_observed_frame: dict[int, int] = {}
         self._next_global_id = 1
         self._rejected_predictions: list[RejectedTrackPrediction] = []
 
@@ -202,6 +207,7 @@ class GroupedBoTSORT:
                 detection = group_detections[detection_index]
                 global_id = self._global_id(group, native_id)
                 self._last_detection[global_id] = detection
+                self._last_observed_frame[global_id] = frame_number
                 observed_native_ids.add(native_id)
                 x1, y1, x2, y2 = self._clip_bounds(
                     row[:4], frame_width, frame_height
@@ -248,6 +254,26 @@ class GroupedBoTSORT:
                 x1, y1, x2, y2 = self._clip_bounds(
                     raw_bounds, frame_width, frame_height
                 )
+                prediction_age = frame_number - self._last_observed_frame[global_id]
+                if prediction_age > self.max_prediction_frames:
+                    self._rejected_predictions.append(
+                        RejectedTrackPrediction(
+                            frame=frame_number,
+                            track_id=global_id,
+                            native_track_id=native_id,
+                            association_group=group,
+                            raw_x1=raw_bounds[0],
+                            raw_y1=raw_bounds[1],
+                            raw_x2=raw_bounds[2],
+                            raw_y2=raw_bounds[3],
+                            clipped_x1=x1,
+                            clipped_y1=y1,
+                            clipped_x2=x2,
+                            clipped_y2=y2,
+                            reason="prediction_age_exceeded",
+                        )
+                    )
+                    continue
                 if x2 <= x1 or y2 <= y1:
                     self._rejected_predictions.append(
                         RejectedTrackPrediction(

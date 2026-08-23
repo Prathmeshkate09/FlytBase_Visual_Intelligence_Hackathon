@@ -145,3 +145,17 @@ def test_detector_config_rejects_duplicate_class_ids() -> None:
     with pytest.raises(ValueError, match="duplicates"):
         DetectorConfig(class_ids=(0, 2, 2)).validate()
 
+
+def test_detector_config_maps_visdrone_classes_and_thresholds() -> None:
+    config = DetectorConfig(
+        confidence=0.05,
+        class_name_map={"people": "pedestrian", "van": "lgv", "motor": "motorcycle"},
+        class_confidence_thresholds={"pedestrian": 0.15, "lgv": 0.10},
+    )
+    config.validate()
+
+    assert config.canonical_class_name("People") == "pedestrian"
+    assert config.canonical_class_name("VAN") == "lgv"
+    assert config.confidence_threshold_for("pedestrian") == pytest.approx(0.15)
+    assert config.confidence_threshold_for("car") == pytest.approx(0.05)
+

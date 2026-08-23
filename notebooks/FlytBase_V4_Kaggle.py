@@ -46,15 +46,19 @@ GITHUB_REPOSITORY = "https://github.com/Prathmeshkate09/FlytBase_Visual_Intellig
 GITHUB_BRANCH = "level1-v4"
 
 # The notebook searches every attached Kaggle input recursively.
-VIDEO_FILENAME_HINT = "intersection_verify_30_45.mp4"
+VIDEO_FILENAME_HINT = "source_video_89f.mp4"
 
-# Detector experiment: "full_frame" or "sahi".
-DETECTOR_MODE = "full_frame"
-MODEL_NAME_OR_PATH = "yolo26s.pt"
+# Aerial-domain detector experiment. Start full-frame at high resolution;
+# retain SAHI only if a later controlled comparison improves verified recall.
+DETECTOR_MODE = "aerial_full_frame"
+MODEL_REPOSITORY = "dronefreak/visdrone-yolov26l"
+MODEL_FILENAME = "best.pt"
+MODEL_SHA256 = "0a8be5595dd955433c3d72a8fd951eadc886052a2034c18c0171827a2e5cf4f2"
 
-SMOKE_SECONDS = 1
+SMOKE_SECONDS = 3
 FULL_RUN_SECONDS = 15
 RUN_FULL_INFERENCE = False
+EXTRACT_ANNOTATION_FRAMES = False
 
 # Training is deliberately disabled until corrected labels are attached.
 RUN_VISDRONE_PRETRAINING = False
@@ -68,11 +72,12 @@ DATA_DIR = WORK_ROOT / "data"
 RUNS_DIR = WORK_ROOT / "runs"
 CONFIG_DIR = WORK_ROOT / "configs"
 TRAINING_DIR = WORK_ROOT / "training"
+MODELS_DIR = WORK_ROOT / "models"
 
 if not KAGGLE_ROOT.exists():
     raise RuntimeError("This notebook must run inside Kaggle.")
 
-for directory in (WORK_ROOT, DATA_DIR, RUNS_DIR, CONFIG_DIR, TRAINING_DIR):
+for directory in (WORK_ROOT, DATA_DIR, RUNS_DIR, CONFIG_DIR, TRAINING_DIR, MODELS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 print("Workspace:", WORK_ROOT)
@@ -216,10 +221,35 @@ subprocess.run(
     [sys.executable, "-m", "pip", "install", "-q", "-r", str(REPO_DIR / "requirements-eval.txt")],
     check=True,
 )
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "huggingface_hub>=0.27,<2"],
+    check=True,
+)
 
 from ultralytics import YOLO
+from huggingface_hub import hf_hub_download
 import cv2
+import hashlib
 import pandas as pd
+
+MODEL_NAME_OR_PATH = Path(
+    hf_hub_download(
+        repo_id=MODEL_REPOSITORY,
+        filename=MODEL_FILENAME,
+        local_dir=MODELS_DIR,
+    )
+)
+model_digest = hashlib.sha256(MODEL_NAME_OR_PATH.read_bytes()).hexdigest()
+if model_digest != MODEL_SHA256:
+    raise RuntimeError(
+        f"Aerial model SHA256 mismatch: {model_digest}; expected {MODEL_SHA256}"
+    )
+
+model_probe = YOLO(str(MODEL_NAME_OR_PATH))
+print("Aerial model:", MODEL_NAME_OR_PATH)
+print("Aerial model SHA256:", model_digest)
+print("Aerial model classes:", model_probe.names)
+del model_probe
 
 print("OpenCV:", cv2.__version__)
 print("Dependencies installed.")
@@ -274,23 +304,42 @@ subprocess.run(
 import json
 
 detector_config = {
-    "model_path": MODEL_NAME_OR_PATH,
+    "model_path": str(MODEL_NAME_OR_PATH),
     "device": "0",
-    "confidence": 0.10,
+    "confidence": 0.05,
     "iou": 0.50,
-    "class_ids": [0, 1, 2, 3, 5, 7],
-    "image_size": 1280,
-    "use_sahi": DETECTOR_MODE == "sahi",
-    "slice_height": 960,
-    "slice_width": 960,
+    "class_ids": [0, 1, 2, 3, 4, 5, 8, 9],
+    "image_size": 1920,
+    "use_sahi": DETECTOR_MODE == "aerial_sahi",
+    "slice_height": 1280,
+    "slice_width": 1280,
     "overlap_height_ratio": 0.20,
     "overlap_width_ratio": 0.20,
     "batch_size": 1,
-    "perform_standard_prediction": DETECTOR_MODE == "sahi",
+    "perform_standard_prediction": DETECTOR_MODE == "aerial_sahi",
     "postprocess_type": "GREEDYNMM",
     "postprocess_match_metric": "IOS",
     "postprocess_match_threshold": 0.50,
-    "postprocess_class_agnostic": True,
+    "postprocess_class_agnostic": False,
+    "class_name_map": {
+        "pedestrian": "pedestrian",
+        "people": "pedestrian",
+        "bicycle": "bicycle",
+        "car": "car",
+        "van": "lgv",
+        "truck": "truck",
+        "bus": "bus",
+        "motor": "motorcycle",
+    },
+    "class_confidence_thresholds": {
+        "pedestrian": 0.12,
+        "bicycle": 0.10,
+        "car": 0.08,
+        "lgv": 0.08,
+        "truck": 0.08,
+        "bus": 0.08,
+        "motorcycle": 0.10,
+    },
 }
 
 DETECTION_CONFIG = CONFIG_DIR / f"detection_{DETECTOR_MODE}.json"
@@ -317,6 +366,10 @@ command = [
     str(DETECTION_CONFIG),
     "--tracker-config",
     str(REPO_DIR / "config" / "botsort_drone_v4.yaml"),
+    "--road-user-roi",
+    str(REPO_DIR / "config" / "road_user_roi_intersection_v3.json"),
+    "--max-prediction-frames",
+    "15",
     "--max-seconds",
     str(SMOKE_SECONDS),
 ]
@@ -390,28 +443,30 @@ else:
 # %%
 ANNOTATION_FRAMES = 89
 annotation_images = WORK_ROOT / "annotation_seed" / "images"
-annotation_images.mkdir(parents=True, exist_ok=True)
+if EXTRACT_ANNOTATION_FRAMES:
+    annotation_images.mkdir(parents=True, exist_ok=True)
+    cap = cv2.VideoCapture(str(VIDEO_PATH))
+    written = 0
+    while written < ANNOTATION_FRAMES:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        output_path = annotation_images / f"frame_{written:06d}.jpg"
+        if not output_path.exists():
+            cv2.imwrite(str(output_path), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        written += 1
+    cap.release()
 
-cap = cv2.VideoCapture(str(VIDEO_PATH))
-written = 0
-while written < ANNOTATION_FRAMES:
-    ok, frame = cap.read()
-    if not ok:
-        break
-    output_path = annotation_images / f"frame_{written:06d}.jpg"
-    if not output_path.exists():
-        cv2.imwrite(str(output_path), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
-    written += 1
-cap.release()
-
-archive = shutil.make_archive(
-    str(WORK_ROOT / "FlytBase_89f_images_for_CVAT"),
-    "zip",
-    root_dir=annotation_images.parent,
-    base_dir=annotation_images.name,
-)
-print("Extracted frames:", written)
-print("CVAT image archive:", archive)
+    archive = shutil.make_archive(
+        str(WORK_ROOT / "FlytBase_89f_images_for_CVAT"),
+        "zip",
+        root_dir=annotation_images.parent,
+        base_dir=annotation_images.name,
+    )
+    print("Extracted frames:", written)
+    print("CVAT image archive:", archive)
+else:
+    print("Skipped: the 89-frame CVAT archive already exists in the private input workflow.")
 
 # %% [markdown]
 # ## 13. Optional aerial detector pretraining on VisDrone
@@ -495,6 +550,20 @@ else:
 # `/kaggle/working` is preserved when the notebook is saved as a version.
 
 # %%
+DOWNLOAD_VIDEO = KAGGLE_ROOT / "working" / "FlytBase_V4_Aerial_3s_Verification.mp4"
+DOWNLOAD_ARCHIVE_BASE = KAGGLE_ROOT / "working" / "FlytBase_V4_Aerial_3s_Results"
+shutil.copy2(SMOKE_VIDEO, DOWNLOAD_VIDEO)
+DOWNLOAD_ARCHIVE = Path(
+    shutil.make_archive(
+        str(DOWNLOAD_ARCHIVE_BASE),
+        "zip",
+        root_dir=SMOKE_OUTPUT,
+    )
+)
+
+print("Direct video download:", DOWNLOAD_VIDEO)
+print("Direct result archive:", DOWNLOAD_ARCHIVE)
+
 summary_files = sorted(
     path for path in WORK_ROOT.rglob("*") if path.is_file() and path.stat().st_size < 5 * 2**20
 )
