@@ -8,6 +8,7 @@ import pytest
 
 from traffic_agent.evaluation_v4 import (
     QualityGates,
+    _trackeval_numpy_compatibility,
     mode_classification_metrics,
     prepare_predictions,
     prepare_trackeval_sequence,
@@ -117,3 +118,15 @@ def test_quality_gate_requires_every_metric() -> None:
     assert passing["quality_status"] == "passed"
     assert failing["quality_status"] == "failed"
     assert failing["gate_results"]["idf1"] is False
+
+
+def test_trackeval_numpy_compatibility_is_scoped() -> None:
+    import numpy as np
+
+    had_float = "float" in np.__dict__
+    had_int = "int" in np.__dict__
+    with _trackeval_numpy_compatibility():
+        assert np.float is float
+        assert np.int is int
+    assert ("float" in np.__dict__) is had_float
+    assert ("int" in np.__dict__) is had_int

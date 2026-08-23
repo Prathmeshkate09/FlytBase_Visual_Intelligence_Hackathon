@@ -5,6 +5,7 @@ import io
 import json
 import math
 import zipfile
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,27 @@ REQUIRED_PREDICTION_COLUMNS = {
     "y2",
     "observed",
 }
+
+
+@contextmanager
+def _trackeval_numpy_compatibility() -> Any:
+    """Temporarily restore aliases required by the pinned official TrackEval.
+
+    TrackEval's latest upstream commit predates NumPy 1.24 and its HOTA and
+    Identity implementations still reference ``np.float`` and ``np.int``.
+    Keep the compatibility boundary local to the metric call and remove only
+    aliases that this function added.
+    """
+    added: list[str] = []
+    for name, value in (("float", float), ("int", int)):
+        if name not in np.__dict__:
+            setattr(np, name, value)
+            added.append(name)
+    try:
+        yield
+    finally:
+        for name in added:
+            delattr(np, name)
 
 
 @dataclass(frozen=True)
@@ -340,13 +362,14 @@ def trackeval_metrics(sequence: dict[str, Any]) -> dict[str, float | int]:
             "TrackEval is required for formal metrics. Install requirements-eval.txt."
         ) from error
 
-    hota_result = trackeval.metrics.HOTA().eval_sequence(sequence)
-    identity_result = trackeval.metrics.Identity(
-        {"THRESHOLD": 0.5, "PRINT_CONFIG": False}
-    ).eval_sequence(sequence)
-    clear_result = trackeval.metrics.CLEAR(
-        {"THRESHOLD": 0.5, "PRINT_CONFIG": False}
-    ).eval_sequence(sequence)
+    with _trackeval_numpy_compatibility():
+        hota_result = trackeval.metrics.HOTA().eval_sequence(sequence)
+        identity_result = trackeval.metrics.Identity(
+            {"THRESHOLD": 0.5, "PRINT_CONFIG": False}
+        ).eval_sequence(sequence)
+        clear_result = trackeval.metrics.CLEAR(
+            {"THRESHOLD": 0.5, "PRINT_CONFIG": False}
+        ).eval_sequence(sequence)
     return {
         "detection_precision": float(clear_result["CLR_Pr"]),
         "detection_recall": float(clear_result["CLR_Re"]),
