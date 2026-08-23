@@ -25,6 +25,19 @@ def _rolling_median(values: pd.Series, window: int) -> pd.Series:
     return values.rolling(safe_window, center=True, min_periods=1).median()
 
 
+def _parse_observed(values: pd.Series) -> pd.Series:
+    if pd.api.types.is_bool_dtype(values):
+        return values.astype(bool)
+    normalized = values.astype(str).str.strip().str.lower()
+    parsed = normalized.map(
+        {"true": True, "false": False, "1": True, "0": False}
+    )
+    if parsed.isna().any():
+        invalid = sorted(normalized[parsed.isna()].unique())
+        raise ValueError(f"Unsupported observed values: {invalid}")
+    return parsed.astype(bool)
+
+
 def clean_trajectories(
     raw: pd.DataFrame,
     fps: float,
@@ -65,9 +78,21 @@ def clean_trajectories(
             if len(chunk) < minimum_observations:
                 continue
             frame_index = np.arange(int(chunk["frame"].min()), int(chunk["frame"].max()) + 1)
+            source_observed = (
+                pd.Series(
+                    _parse_observed(chunk["observed"]).to_numpy(),
+                    index=chunk["frame"].to_numpy(dtype=int),
+                )
+                if "observed" in chunk
+                else None
+            )
             expanded = chunk.set_index("frame").reindex(frame_index)
             expanded.index.name = "frame"
-            expanded["observed"] = expanded["track_id"].notna()
+            expanded["observed"] = (
+                source_observed.reindex(frame_index).fillna(False).astype(bool)
+                if source_observed is not None
+                else expanded["track_id"].notna()
+            )
             expanded["track_id"] = int(track_id)
             expanded["segment_id"] = f"{int(track_id)}-{chunk_index}"
             expanded["class_id"] = class_id

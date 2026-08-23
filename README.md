@@ -131,15 +131,19 @@ python run.py \
   --max-seconds 15
 ```
 
-## Level 2 quick run: no detection rerun
+## Level 2 strict verified-input run
 
-Use the exact source video and `raw_tracks.csv` from Level 1:
+Level 2 refuses to run until the exact V4 `tracks.csv`, source video, immutable
+run manifest and passing ground-truth quality report agree by run ID and
+SHA-256. This prevents accidental reuse of the submitted V3 trajectories:
 
 ```bash
 python run_level2.py \
-  --raw-tracks /content/flytbase_results/level1_botsort_drone_v3/raw_tracks.csv \
-  --video /content/intersection_60s.mp4 \
-  --output /content/flytbase_results/level2_object_insight
+  --tracks /content/drive/MyDrive/FlytBase/results/level1_v4_final/tracks.csv \
+  --video /content/drive/MyDrive/FlytBase/input/intersection_dev_00_15.mp4 \
+  --level1-run-manifest /content/drive/MyDrive/FlytBase/results/level1_v4_final/run_manifest.json \
+  --level1-quality-report /content/drive/MyDrive/FlytBase/results/level1_v4_final/quality_report_ground_truth.json \
+  --output /content/drive/MyDrive/FlytBase/results/level2_v4_final
 ```
 
 This immediately produces defensible appearance features and pixel-space motion. The summary will explicitly mark metric kinematics unavailable.
@@ -150,9 +154,11 @@ The dataset includes frame-level GPS, relative altitude, 35 mm-equivalent focal 
 
 ```bash
 python run_level2.py \
-  --raw-tracks /content/flytbase_results/level1_botsort_drone_v3/raw_tracks.csv \
-  --video /content/intersection_60s.mp4 \
-  --output /content/flytbase_results/level2_object_insight_metric \
+  --tracks /content/drive/MyDrive/FlytBase/results/level1_v4_final/tracks.csv \
+  --video /content/drive/MyDrive/FlytBase/input/intersection_dev_00_15.mp4 \
+  --level1-run-manifest /content/drive/MyDrive/FlytBase/results/level1_v4_final/run_manifest.json \
+  --level1-quality-report /content/drive/MyDrive/FlytBase/results/level1_v4_final/quality_report_ground_truth.json \
+  --output /content/drive/MyDrive/FlytBase/results/level2_v4_final_metric \
   --srt /content/drive/MyDrive/Intersection_1080p.srt \
   --srt-segment-index 0 \
   --srt-max-interpolation-gap-frames 2 \
@@ -180,9 +186,11 @@ python prepare_calibration.py \
 
 ```bash
 python run_level2.py \
-  --raw-tracks /content/flytbase_results/level1_botsort_drone_v3/raw_tracks.csv \
-  --video /content/intersection_60s.mp4 \
-  --output /content/flytbase_results/level2_object_insight_metric \
+  --tracks /content/drive/MyDrive/FlytBase/results/level1_v4_final/tracks.csv \
+  --video /content/drive/MyDrive/FlytBase/input/intersection_dev_00_15.mp4 \
+  --level1-run-manifest /content/drive/MyDrive/FlytBase/results/level1_v4_final/run_manifest.json \
+  --level1-quality-report /content/drive/MyDrive/FlytBase/results/level1_v4_final/quality_report_ground_truth.json \
+  --output /content/drive/MyDrive/FlytBase/results/level2_v4_final_metric \
   --calibration config/intersection_calibration.json
 ```
 
@@ -195,6 +203,7 @@ The homography loader rejects degenerate control points and calibrations whose r
 - `level2_object_insights.csv`: one row per track segment with appearance and kinematic summaries
 - `level2_speed_profiles.png`: profiles for the longest tracks
 - `level2_evidence.mp4`: clean annotated evidence video
+- `level2_evidence_report.json`: proof that every Level-1 track row received a box
 - `metric_projection_report.json`: SRT camera model or homography provenance and validation details
 - `level2_summary.json`: submission-ready facts and limitations
 - `level2_run_metadata.json`: reproducibility metadata

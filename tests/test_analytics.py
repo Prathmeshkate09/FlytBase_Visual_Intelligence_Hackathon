@@ -60,3 +60,33 @@ def test_class_consistency_is_measured_before_label_stabilisation() -> None:
     objects, _ = calculate_object_metrics(cleaned, fps=10, raw=raw)
     assert objects.iloc[0]["class_name"] == "car"
     assert objects.iloc[0]["class_consistency"] == 0.8
+
+
+def test_clean_trajectories_preserves_occlusion_and_interpolation_state() -> None:
+    raw = pd.DataFrame(
+        [
+            {
+                "frame": frame,
+                "timestamp_s": frame / 10,
+                "track_id": 7,
+                "class_id": 2,
+                "class_name": "car",
+                "confidence": 0.9 if frame != 1 else None,
+                "x1": frame,
+                "y1": 5,
+                "x2": frame + 10,
+                "y2": 15,
+                "center_x": frame + 5,
+                "center_y": 10,
+                "ground_x": frame + 5,
+                "ground_y": 15,
+                "observed": frame != 1,
+            }
+            for frame in (0, 1, 3)
+        ]
+    )
+
+    cleaned = clean_trajectories(raw, fps=10, min_track_seconds=0.2)
+    observed = cleaned.set_index("frame")["observed"].to_dict()
+
+    assert observed == {0: True, 1: False, 2: False, 3: True}

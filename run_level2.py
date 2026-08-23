@@ -11,9 +11,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Add appearance and calibration-aware per-object kinematics to Level 1 tracks."
     )
-    parser.add_argument("--raw-tracks", required=True, type=Path, help="Level 1 raw_tracks.csv")
+    parser.add_argument(
+        "--tracks",
+        "--raw-tracks",
+        dest="tracks",
+        required=True,
+        type=Path,
+        help="Verified Level 1 V4 tracks.csv (the raw-tracks name is a legacy alias)",
+    )
     parser.add_argument("--video", required=True, type=Path, help="The exact video used for Level 1")
     parser.add_argument("--output", required=True, type=Path, help="Level 2 output directory")
+    parser.add_argument("--level1-run-manifest", required=True, type=Path)
+    parser.add_argument("--level1-quality-report", required=True, type=Path)
     metric_group = parser.add_mutually_exclusive_group()
     metric_group.add_argument(
         "--calibration",
@@ -50,7 +59,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoothing-window", type=int, default=31)
     parser.add_argument("--color-samples", type=int, default=7)
     parser.add_argument("--appearance-conf", type=float, default=0.20)
-    parser.add_argument("--display-conf", type=float, default=0.25)
+    parser.add_argument(
+        "--max-labels-per-frame",
+        type=int,
+        default=40,
+        help="Limit labels only. Every Level 1 track box is still rendered.",
+    )
     parser.add_argument("--stop-speed-m-s", type=float, default=0.50)
     parser.add_argument("--no-video", action="store_true")
     return parser.parse_args()
@@ -59,9 +73,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config = Level2Config(
-        raw_tracks=args.raw_tracks,
+        tracks=args.tracks,
         video=args.video,
         output_dir=args.output,
+        level1_run_manifest=args.level1_run_manifest,
+        level1_quality_report=args.level1_quality_report,
         calibration=args.calibration,
         srt=args.srt,
         srt_frame_offset=args.srt_frame_offset,
@@ -73,7 +89,7 @@ def main() -> None:
         max_color_samples=args.color_samples,
         appearance_confidence=args.appearance_conf,
         stop_speed_m_s=args.stop_speed_m_s,
-        display_confidence=args.display_conf,
+        evidence_max_labels_per_frame=args.max_labels_per_frame,
         save_video=not args.no_video,
     )
     print(json.dumps(run_level2(config), indent=2))

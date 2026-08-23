@@ -14,6 +14,7 @@ from scipy.signal import savgol_filter
 from .analytics import clean_trajectories
 from .appearance import relative_size_classes, sample_track_colours
 from .calibration import GroundCalibration, load_ground_calibration
+from .evaluation_v4 import sha256_file
 from .telemetry import TelemetryGroundProjector, parse_dji_srt
 
 
@@ -30,14 +31,17 @@ LEVEL2_REQUIRED_COLUMNS = {
     "y2",
     "ground_x",
     "ground_y",
+    "observed",
 }
 
 
 @dataclass(frozen=True)
 class Level2Config:
-    raw_tracks: Path
+    tracks: Path
     video: Path
     output_dir: Path
+    level1_run_manifest: Path
+    level1_quality_report: Path
     calibration: Path | None = None
     srt: Path | None = None
     srt_frame_offset: int = 0
@@ -49,11 +53,68 @@ class Level2Config:
     max_color_samples: int = 7
     appearance_confidence: float = 0.20
     stop_speed_m_s: float = 0.50
-    display_confidence: float = 0.25
     save_video: bool = True
     evidence_max_width: int = 1280
     evidence_trail_length: int = 20
-    evidence_max_objects_per_frame: int = 12
+    evidence_max_labels_per_frame: int = 40
+
+
+def validate_level1_dependency(
+    *,
+    tracks_path: Path,
+    video_path: Path,
+    run_manifest_path: Path,
+    quality_report_path: Path,
+) -> dict[str, object]:
+    """Refuse Level 2 input unless it is the exact verified Level 1 run."""
+    for path in (
+        tracks_path,
+        video_path,
+        run_manifest_path,
+        quality_report_path,
+    ):
+        if not path.exists():
+            raise FileNotFoundError(path)
+    manifest = json.loads(run_manifest_path.read_text(encoding="utf-8"))
+    quality = json.loads(quality_report_path.read_text(encoding="utf-8"))
+    if quality.get("quality_status") != "passed":
+        raise RuntimeError(
+            "Level 2 is blocked: Level 1 ground-truth quality status is not passed"
+        )
+    gate_results = quality.get("gate_results")
+    if not isinstance(gate_results, dict) or not gate_results or not all(
+        value is True for value in gate_results.values()
+    ):
+        raise RuntimeError(
+            "Level 2 is blocked: Level 1 quality report does not contain all passing gates"
+        )
+    manifest_run_id = str(manifest.get("run_id", ""))
+    quality_run_id = str(quality.get("run_id", ""))
+    if not manifest_run_id or quality_run_id != manifest_run_id:
+        raise RuntimeError("Level 1 run ID mismatch between manifest and quality report")
+
+    tracks_hash = sha256_file(tracks_path)
+    manifest_tracks_hash = str(manifest.get("tracks_sha256", ""))
+    quality_tracks_hash = str(
+        quality.get("provenance", {}).get("tracks_sha256", "")
+    )
+    if not manifest_tracks_hash or tracks_hash != manifest_tracks_hash:
+        raise RuntimeError("Level 1 tracks hash does not match run manifest")
+    if quality_tracks_hash != tracks_hash:
+        raise RuntimeError("Level 1 tracks hash does not match quality report")
+
+    video_hash = sha256_file(video_path)
+    manifest_video_hash = str(manifest.get("input_video_sha256", ""))
+    if not manifest_video_hash or video_hash != manifest_video_hash:
+        raise RuntimeError("Level 1 source-video hash does not match run manifest")
+    return {
+        "run_id": manifest_run_id,
+        "tracks_sha256": tracks_hash,
+        "video_sha256": video_hash,
+        "quality_report_sha256": sha256_file(quality_report_path),
+        "quality_status": "passed",
+        "gate_results": gate_results,
+    }
 
 
 def _video_properties(video_path: Path) -> tuple[float, int, int, int]:
@@ -329,7 +390,7 @@ def _draw_packed_label(
     bounds: tuple[int, int, int, int],
     colour: tuple[int, int, int],
     occupied: list[tuple[int, int, int, int]],
-) -> None:
+) -> bool:
     x1, y1, x2, y2 = bounds
     font = cv2.FONT_HERSHEY_SIMPLEX
     scale = 0.40
@@ -362,7 +423,51 @@ def _draw_packed_label(
             cv2.LINE_AA,
         )
         occupied.append(background)
-        return
+        return True
+    return False
+
+
+def _level2_rows_by_frame(raw: pd.DataFrame) -> dict[int, pd.DataFrame]:
+    required = {"frame", "track_id", "x1", "y1", "x2", "y2", "observed"}
+    missing = required - set(raw.columns)
+    if missing:
+        raise ValueError(f"Level 2 renderer is missing columns: {sorted(missing)}")
+    if raw.duplicated(["frame", "track_id"]).any():
+        raise ValueError("Level 2 renderer received duplicate frame/track_id rows")
+    invalid = (raw["x2"] <= raw["x1"]) | (raw["y2"] <= raw["y1"])
+    if invalid.any():
+        raise ValueError(f"Level 2 renderer received {int(invalid.sum())} invalid boxes")
+    return {
+        int(frame): group.sort_values("track_id").copy()
+        for frame, group in raw.groupby("frame", sort=True)
+    }
+
+
+def _row_observed(value: object) -> bool:
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1"}:
+        return True
+    if normalized in {"false", "0"}:
+        return False
+    raise ValueError(f"Unsupported observed value: {value!r}")
+
+
+def _draw_dashed_box(
+    frame: np.ndarray,
+    bounds: tuple[int, int, int, int],
+    colour: tuple[int, int, int],
+    *,
+    dash: int = 8,
+) -> None:
+    x1, y1, x2, y2 = bounds
+    for start in range(x1, x2, dash * 2):
+        cv2.line(frame, (start, y1), (min(start + dash, x2), y1), colour, 2)
+        cv2.line(frame, (start, y2), (min(start + dash, x2), y2), colour, 2)
+    for start in range(y1, y2, dash * 2):
+        cv2.line(frame, (x1, start), (x1, min(start + dash, y2)), colour, 2)
+        cv2.line(frame, (x2, start), (x2, min(start + dash, y2)), colour, 2)
 
 
 def write_evidence_video(
@@ -372,11 +477,10 @@ def write_evidence_video(
     objects: pd.DataFrame,
     kinematics: pd.DataFrame,
     fps: float,
-    display_confidence: float,
     max_width: int,
     trail_length: int,
-    max_objects_per_frame: int,
-) -> None:
+    max_labels_per_frame: int,
+) -> dict[str, int | bool]:
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
         raise RuntimeError(f"Could not open source video: {video_path}")
@@ -395,23 +499,14 @@ def write_evidence_video(
         capture.release()
         raise RuntimeError(f"Could not create evidence video: {output_path}")
 
-    per_track = objects.sort_values("duration_s", ascending=False).drop_duplicates("track_id").set_index("track_id")
-    reliable_display = per_track[
-        (per_track["duration_s"] >= 2.0)
-        & (per_track["raw_class_consistency"] >= 0.80)
-        & (per_track["color_confidence"] >= 0.55)
-        & (per_track["displacement_px"] >= 12.0)
-    ]
-    stable_ids = set(reliable_display.index.astype(int))
-    display = raw[(raw["track_id"].isin(stable_ids)) & (raw["confidence"] >= display_confidence)].copy()
-    display["box_area_px2"] = (display["x2"] - display["x1"]).clip(lower=0) * (
-        display["y2"] - display["y1"]
-    ).clip(lower=0)
-    display["display_score"] = display["confidence"] * np.sqrt(display["box_area_px2"].clip(lower=1))
-    rows_by_frame = {
-        int(frame): group.nlargest(max_objects_per_frame, "display_score")
-        for frame, group in display.groupby("frame")
-    }
+    if max_labels_per_frame < 0:
+        raise ValueError("max_labels_per_frame cannot be negative")
+    per_track = (
+        objects.sort_values("duration_s", ascending=False)
+        .drop_duplicates("track_id")
+        .set_index("track_id")
+    )
+    rows_by_frame = _level2_rows_by_frame(raw)
     motion_columns = ["frame", "track_id", "speed_px_s"]
     if "speed_kmh" in kinematics:
         motion_columns += ["speed_kmh", "inside_calibration_region"]
@@ -420,6 +515,9 @@ def write_evidence_video(
     maximum_frame = int(raw["frame"].max())
     scale_x = output_width / source_width
     scale_y = output_height / source_height
+    rendered_boxes = 0
+    rendered_labels = 0
+    suppressed_labels = 0
 
     try:
         frame_number = 0
@@ -429,37 +527,83 @@ def write_evidence_video(
                 break
             frame = cv2.resize(frame, (output_width, output_height))
             occupied_labels: list[tuple[int, int, int, int]] = []
-            for _, detection in rows_by_frame.get(frame_number, pd.DataFrame()).iterrows():
+            frame_rows = rows_by_frame.get(frame_number, pd.DataFrame())
+            observed_count = 0
+            occluded_count = 0
+            labels_this_frame = 0
+            for _, detection in frame_rows.iterrows():
                 track_id = int(detection["track_id"])
-                if track_id not in per_track.index:
-                    continue
-                insight = per_track.loc[track_id]
-                colour_name = str(insight.get("dominant_color", "unknown"))
+                insight = per_track.loc[track_id] if track_id in per_track.index else None
+                colour_confidence = (
+                    float(insight.get("color_confidence", 0.0))
+                    if insight is not None
+                    else 0.0
+                )
+                colour_name = (
+                    str(insight.get("dominant_color", "unknown"))
+                    if insight is not None and colour_confidence >= 0.55
+                    else "unknown"
+                )
                 box_colour = _box_colour(colour_name)
-                x1 = int(float(detection["x1"]) * scale_x)
-                y1 = int(float(detection["y1"]) * scale_y)
-                x2 = int(float(detection["x2"]) * scale_x)
-                y2 = int(float(detection["y2"]) * scale_y)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), box_colour, 2)
-                trail_point = ((x1 + x2) // 2, y2)
-                trails[track_id].append(trail_point)
+                x1 = min(
+                    output_width - 2,
+                    max(0, int(float(detection["x1"]) * scale_x)),
+                )
+                y1 = min(
+                    output_height - 2,
+                    max(0, int(float(detection["y1"]) * scale_y)),
+                )
+                x2 = max(x1 + 1, int(float(detection["x2"]) * scale_x))
+                y2 = max(y1 + 1, int(float(detection["y2"]) * scale_y))
+                x2 = min(output_width - 1, x2)
+                y2 = min(output_height - 1, y2)
+                observed = _row_observed(detection["observed"])
+                observed_count += int(observed)
+                occluded_count += int(not observed)
+                if observed:
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), box_colour, 2)
+                    trails[track_id].append(((x1 + x2) // 2, y2))
+                else:
+                    _draw_dashed_box(frame, (x1, y1, x2, y2), box_colour)
+                rendered_boxes += 1
                 points = list(trails[track_id])
                 for start, end in zip(points[:-1], points[1:]):
                     cv2.line(frame, start, end, box_colour, 2, cv2.LINE_AA)
 
-                size_label = _size_short(str(insight.get("relative_size_class", "unknown")))
-                label = f"#{track_id} {_colour_short(colour_name)} {size_label}"
+                class_name = str(detection.get("class_name", "road_user"))
+                label = f"#{track_id} {class_name}"
+                if colour_name != "unknown":
+                    label += f" {_colour_short(colour_name)}"
+                if insight is not None:
+                    size_label = _size_short(
+                        str(insight.get("relative_size_class", "unknown"))
+                    )
+                    if size_label not in {"?", "UNK"}:
+                        label += f" {size_label}"
                 motion_key = (frame_number, track_id)
                 if motion_key in motion_lookup.index:
                     motion = motion_lookup.loc[motion_key]
                     if "speed_kmh" in motion and bool(motion.get("inside_calibration_region", False)):
                         label += f" ~{float(motion['speed_kmh']):.0f}km/h"
-                _draw_packed_label(frame, label, (x1, y1, x2, y2), box_colour, occupied_labels)
-            cv2.rectangle(frame, (0, 0), (output_width, 32), (18, 18, 18), -1)
+                if labels_this_frame < max_labels_per_frame and _draw_packed_label(
+                    frame,
+                    label,
+                    (x1, y1, x2, y2),
+                    box_colour,
+                    occupied_labels,
+                ):
+                    labels_this_frame += 1
+                    rendered_labels += 1
+                else:
+                    suppressed_labels += 1
+            cv2.rectangle(frame, (0, 0), (output_width, 38), (18, 18, 18), -1)
             cv2.putText(
                 frame,
-                "Level 2 evidence | moving, stable tracks | colour + relative size",
-                (14, 22),
+                (
+                    f"Level 2 | active {len(frame_rows)} | observed {observed_count} "
+                    f"| occluded {occluded_count} | solid=observed dashed=predicted"
+                ),
+                (14, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.52,
                 (255, 255, 255),
@@ -471,6 +615,19 @@ def write_evidence_video(
     finally:
         capture.release()
         writer.release()
+    input_rows = int(len(raw))
+    if rendered_boxes != input_rows:
+        raise RuntimeError(
+            f"Level 2 evidence omitted boxes: rendered {rendered_boxes} of {input_rows}"
+        )
+    return {
+        "frames": maximum_frame + 1,
+        "input_track_rows": input_rows,
+        "rendered_boxes": rendered_boxes,
+        "rendered_labels": rendered_labels,
+        "suppressed_labels": suppressed_labels,
+        "complete": True,
+    }
 
 
 def save_speed_plot(kinematics: pd.DataFrame, objects: pd.DataFrame, output_path: Path) -> None:
@@ -592,10 +749,12 @@ def _build_summary(
 
 
 def run_level2(config: Level2Config) -> dict[str, object]:
-    if not config.raw_tracks.exists():
-        raise FileNotFoundError(f"Level 1 raw tracks not found: {config.raw_tracks}")
-    if not config.video.exists():
-        raise FileNotFoundError(f"Source video not found: {config.video}")
+    level1_dependency = validate_level1_dependency(
+        tracks_path=config.tracks,
+        video_path=config.video,
+        run_manifest_path=config.level1_run_manifest,
+        quality_report_path=config.level1_quality_report,
+    )
     if config.min_track_seconds <= 0:
         raise ValueError("min_track_seconds must be positive")
     if config.trajectory_smoothing_window < 1:
@@ -604,7 +763,7 @@ def run_level2(config: Level2Config) -> dict[str, object]:
         raise ValueError("Use either calibration JSON or SRT telemetry, not both")
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = pd.read_csv(config.raw_tracks)
+    raw = pd.read_csv(config.tracks)
     missing = LEVEL2_REQUIRED_COLUMNS - set(raw.columns)
     if missing:
         raise ValueError(f"Missing Level 1 columns: {sorted(missing)}")
@@ -639,13 +798,16 @@ def run_level2(config: Level2Config) -> dict[str, object]:
     )
     if trajectories.empty:
         raise RuntimeError("No tracks survived Level 2 stability filtering")
+    observed_raw = raw[raw["observed"].map(_row_observed)].copy()
+    if observed_raw.empty:
+        raise RuntimeError("Level 1 tracks contain no observed detections")
     appearance = sample_track_colours(
-        raw,
+        observed_raw,
         video_path=config.video,
         max_samples_per_track=config.max_color_samples,
         minimum_confidence=config.appearance_confidence,
     )
-    sizes = relative_size_classes(raw)
+    sizes = relative_size_classes(observed_raw)
     kinematics = calculate_kinematics(
         trajectories,
         calibration=calibration,
@@ -656,7 +818,7 @@ def run_level2(config: Level2Config) -> dict[str, object]:
     if telemetry is not None:
         metric_report = telemetry.to_report()
     objects = calculate_object_insights(
-        raw,
+        observed_raw,
         kinematics=kinematics,
         appearance=appearance,
         sizes=sizes,
@@ -672,34 +834,40 @@ def run_level2(config: Level2Config) -> dict[str, object]:
         (config.output_dir / "metric_projection_report.json").write_text(
             json.dumps(metric_report, indent=2), encoding="utf-8"
         )
+    evidence_report = None
     if config.save_video:
-        write_evidence_video(
+        evidence_report = write_evidence_video(
             config.video,
             config.output_dir / "level2_evidence.mp4",
             raw=raw,
             objects=objects,
             kinematics=kinematics,
             fps=fps,
-            display_confidence=config.display_confidence,
             max_width=config.evidence_max_width,
             trail_length=config.evidence_trail_length,
-            max_objects_per_frame=config.evidence_max_objects_per_frame,
+            max_labels_per_frame=config.evidence_max_labels_per_frame,
+        )
+        (config.output_dir / "level2_evidence_report.json").write_text(
+            json.dumps(evidence_report, indent=2), encoding="utf-8"
         )
 
     summary = _build_summary(raw, objects, metric_report)
+    summary["evidence_completeness"] = evidence_report
     (config.output_dir / "level2_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     metadata = {
         "video": str(config.video),
-        "raw_tracks": str(config.raw_tracks),
+        "level1_dependency": level1_dependency,
         "source_fps": fps,
         "frame_width": width,
         "frame_height": height,
         "source_frames": source_frames,
         "config": {
             **asdict(config),
-            "raw_tracks": str(config.raw_tracks),
+            "tracks": str(config.tracks),
             "video": str(config.video),
             "output_dir": str(config.output_dir),
+            "level1_run_manifest": str(config.level1_run_manifest),
+            "level1_quality_report": str(config.level1_quality_report),
             "calibration": str(config.calibration) if config.calibration is not None else None,
             "srt": str(config.srt) if config.srt is not None else None,
         },
