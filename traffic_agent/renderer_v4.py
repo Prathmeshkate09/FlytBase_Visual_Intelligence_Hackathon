@@ -46,6 +46,7 @@ class RendererV4Config:
     trail_length: int = 20
     box_thickness: int = 2
     label_scale: float = 0.42
+    compact_id_scale: float = 0.34
     max_labels_per_frame: int | None = None
     label_occluded: bool = True
 
@@ -58,6 +59,8 @@ class RendererV4Config:
             raise ValueError("box_thickness must be positive")
         if self.label_scale <= 0:
             raise ValueError("label_scale must be positive")
+        if self.compact_id_scale <= 0:
+            raise ValueError("compact_id_scale must be positive")
         if self.max_labels_per_frame is not None and self.max_labels_per_frame < 1:
             raise ValueError("max_labels_per_frame must be positive when provided")
 
@@ -211,6 +214,85 @@ def _draw_label(
     return False
 
 
+def _draw_compact_id(
+    frame: np.ndarray,
+    track_id: int,
+    bounds: tuple[int, int, int, int],
+    colour: tuple[int, int, int],
+    occupied: list[tuple[int, int, int, int]],
+    scale: float,
+) -> bool:
+    """Draw an ID badge even when a descriptive label is capped or collides.
+
+    Collision-free positions are preferred. If none is available, the badge is
+    drawn inside the associated box so label packing can never silently remove
+    an object's identity from the verification video.
+    """
+    x1, y1, x2, y2 = bounds
+    text = f"#{track_id}"
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    thickness = 1
+    (text_width, text_height), baseline = cv2.getTextSize(
+        text, font, scale, thickness
+    )
+    frame_height, frame_width = frame.shape[:2]
+    candidates = [
+        (x1 + 1, y1 + text_height + baseline + 2),
+        (x1 + 1, y2 - 2),
+        (x2 + 3, y1 + text_height + baseline + 1),
+        (x1 - text_width - 5, y1 + text_height + baseline + 1),
+    ]
+
+    def background_at(text_x: int, text_baseline: int) -> tuple[int, int, int, int]:
+        return (
+            max(0, min(frame_width - 1, text_x - 2)),
+            max(34, min(frame_height - 1, text_baseline - text_height - 3)),
+            max(0, min(frame_width - 1, text_x + text_width + 3)),
+            max(34, min(frame_height - 1, text_baseline + baseline + 2)),
+        )
+
+    selected: tuple[int, int, int, int] | None = None
+    for text_x, text_baseline in candidates:
+        candidate = background_at(text_x, text_baseline)
+        if (
+            candidate[2] > candidate[0]
+            and candidate[3] > candidate[1]
+            and not _overlaps(candidate, occupied)
+        ):
+            selected = candidate
+            break
+
+    if selected is None:
+        # Forced in-box fallback: completeness is more important than label
+        # packing in the verification render.
+        selected = background_at(
+            x1 + 1,
+            max(36 + text_height, y1 + text_height + baseline + 2),
+        )
+    if selected[2] <= selected[0] or selected[3] <= selected[1]:
+        return False
+
+    cv2.rectangle(
+        frame,
+        (selected[0], selected[1]),
+        (selected[2], selected[3]),
+        (18, 18, 18),
+        -1,
+    )
+    cv2.putText(
+        frame,
+        text,
+        (selected[0] + 2, selected[3] - baseline - 1),
+        font,
+        scale,
+        colour,
+        thickness,
+        cv2.LINE_AA,
+    )
+    occupied.append(selected)
+    return True
+
+
 def render_tracking_video(
     *,
     video_path: Path,
@@ -268,7 +350,9 @@ def render_tracking_video(
         lambda: deque(maxlen=active.trail_length)
     )
     rendered_rows = 0
-    labels_drawn = 0
+    full_labels_drawn = 0
+    compact_id_labels_drawn = 0
+    id_labels_missing = 0
     labels_omitted_for_collision = 0
     labels_suppressed_by_mode = 0
     rendered_frames = 0
@@ -338,11 +422,33 @@ def render_tracking_video(
                             occupied,
                             active.label_scale,
                         ):
-                            labels_drawn += 1
+                            full_labels_drawn += 1
                         else:
                             labels_omitted_for_collision += 1
+                            if _draw_compact_id(
+                                frame,
+                                track_id,
+                                bounds,
+                                colour,
+                                occupied,
+                                active.compact_id_scale,
+                            ):
+                                compact_id_labels_drawn += 1
+                            else:
+                                id_labels_missing += 1
                     else:
                         labels_suppressed_by_mode += 1
+                        if _draw_compact_id(
+                            frame,
+                            track_id,
+                            bounds,
+                            colour,
+                            occupied,
+                            active.compact_id_scale,
+                        ):
+                            compact_id_labels_drawn += 1
+                        else:
+                            id_labels_missing += 1
                     rendered_rows += 1
 
             active_count = observed_count + occluded_count
@@ -371,7 +477,7 @@ def render_tracking_video(
             f"Renderer completeness failure: wrote {rendered_rows} boxes for {len(tracks)} rows"
         )
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "video": str(video_path),
         "tracks": str(tracks_path),
         "output": str(output_path),
@@ -379,10 +485,15 @@ def render_tracking_video(
         "rendered_frames": rendered_frames,
         "track_rows": len(tracks),
         "rendered_box_rows": rendered_rows,
-        "labels_drawn": labels_drawn,
+        "labels_drawn": full_labels_drawn + compact_id_labels_drawn,
+        "full_labels_drawn": full_labels_drawn,
+        "compact_id_labels_drawn": compact_id_labels_drawn,
+        "id_labels_missing": id_labels_missing,
         "labels_omitted_for_collision": labels_omitted_for_collision,
         "labels_suppressed_by_mode": labels_suppressed_by_mode,
-        "completeness_passed": rendered_rows == len(tracks),
+        "completeness_passed": (
+            rendered_rows == len(tracks) and id_labels_missing == 0
+        ),
     }
     destination = report_path or output_path.with_suffix(".json")
     destination.write_text(json.dumps(report, indent=2), encoding="utf-8")

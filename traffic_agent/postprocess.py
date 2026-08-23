@@ -172,12 +172,31 @@ def _point_in_polygon(point: tuple[float, float], polygon: tuple[tuple[float, fl
 class RoadUserROI:
     include_polygons: tuple[tuple[tuple[float, float], ...], ...] = ()
     exclude_polygons: tuple[tuple[tuple[float, float], ...], ...] = ()
+    exclude_polygons_by_association_group: tuple[
+        tuple[str, tuple[tuple[tuple[float, float], ...], ...]], ...
+    ] = ()
     coordinate_space: str = "normalized"
 
     def validate(self) -> None:
         if self.coordinate_space not in {"normalized", "pixels"}:
             raise ValueError("ROI coordinate_space must be normalized or pixels")
-        for polygon in (*self.include_polygons, *self.exclude_polygons):
+        group_names: set[str] = set()
+        grouped_polygons: list[tuple[tuple[float, float], ...]] = []
+        for association_group, polygons in self.exclude_polygons_by_association_group:
+            normalized_group = association_group.strip().lower()
+            if not normalized_group:
+                raise ValueError("ROI association-group names cannot be empty")
+            if normalized_group in group_names:
+                raise ValueError(
+                    f"ROI association group is configured more than once: {normalized_group}"
+                )
+            group_names.add(normalized_group)
+            grouped_polygons.extend(polygons)
+        for polygon in (
+            *self.include_polygons,
+            *self.exclude_polygons,
+            *grouped_polygons,
+        ):
             if len(polygon) < 3:
                 raise ValueError("Every ROI polygon must contain at least three points")
             for x, y in polygon:
@@ -201,6 +220,18 @@ class RoadUserROI:
         roi = cls(
             include_polygons=polygons("include_polygons"),
             exclude_polygons=polygons("exclude_polygons"),
+            exclude_polygons_by_association_group=tuple(
+                (
+                    str(association_group).strip().lower(),
+                    tuple(
+                        tuple((float(point[0]), float(point[1])) for point in polygon)
+                        for polygon in group_polygons
+                    ),
+                )
+                for association_group, group_polygons in payload.get(
+                    "exclude_polygons_by_association_group", {}
+                ).items()
+            ),
             coordinate_space=str(payload.get("coordinate_space", "normalized")),
         )
         roi.validate()
@@ -219,6 +250,34 @@ class RoadUserROI:
         )
         excluded = any(_point_in_polygon(candidate, polygon) for polygon in self.exclude_polygons)
         return included and not excluded
+
+    def contains_detection(
+        self,
+        detection: Detection,
+        frame_width: int,
+        frame_height: int,
+    ) -> bool:
+        """Apply global ROI rules plus exclusions for one tracker association pool.
+
+        Association-specific exclusions let a known foliage false-positive zone
+        reject vulnerable-road-user detections without deleting real vehicles on
+        a road that remains visible through or beside that foliage.
+        """
+        if not self.contains(detection.ground_point, frame_width, frame_height):
+            return False
+        if self.coordinate_space == "normalized":
+            candidate = (
+                detection.ground_point[0] / frame_width,
+                detection.ground_point[1] / frame_height,
+            )
+        else:
+            candidate = detection.ground_point
+        group_exclusions = dict(self.exclude_polygons_by_association_group).get(
+            detection.association_group, ()
+        )
+        return not any(
+            _point_in_polygon(candidate, polygon) for polygon in group_exclusions
+        )
 
 
 def box_iou(first: Detection, second: Detection) -> float:
@@ -480,7 +539,9 @@ def postprocess_detections(
         if detection.area < active_config.minimum_box_area_px2:
             rejected.append(RejectedDetection(detection, "box_too_small"))
             continue
-        if roi is not None and not roi.contains(detection.ground_point, frame_width, frame_height):
+        if roi is not None and not roi.contains_detection(
+            detection, frame_width, frame_height
+        ):
             rejected.append(RejectedDetection(detection, "outside_road_user_roi"))
             continue
         accepted.append(detection)

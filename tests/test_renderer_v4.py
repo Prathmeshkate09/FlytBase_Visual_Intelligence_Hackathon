@@ -3,7 +3,14 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from traffic_agent.renderer_v4 import RendererV4Config, _class_lookup, _normalize_tracks
+import numpy as np
+
+from traffic_agent.renderer_v4 import (
+    RendererV4Config,
+    _class_lookup,
+    _draw_compact_id,
+    _normalize_tracks,
+)
 
 
 def _tracks() -> pd.DataFrame:
@@ -61,5 +68,23 @@ def test_class_lookup_requires_one_summary_per_final_id() -> None:
 def test_renderer_rejects_zero_label_limit() -> None:
     with pytest.raises(ValueError, match="max_labels_per_frame"):
         RendererV4Config(max_labels_per_frame=0).validate()
+
+
+def test_compact_id_is_drawn_when_full_label_is_not_available() -> None:
+    frame = np.zeros((120, 160, 3), dtype=np.uint8)
+    occupied = [(8, 34, 150, 75)]
+
+    drawn = _draw_compact_id(
+        frame,
+        track_id=27,
+        bounds=(20, 40, 45, 65),
+        colour=(255, 170, 50),
+        occupied=occupied,
+        scale=0.34,
+    )
+
+    assert drawn is True
+    assert int(frame.sum()) > 0
+    assert len(occupied) == 2
 
 

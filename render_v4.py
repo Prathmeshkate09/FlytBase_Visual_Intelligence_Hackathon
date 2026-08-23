@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--hide-occluded-labels",
         action="store_true",
-        help="Keep dashed occlusion boxes but omit their labels.",
+        help="Keep dashed boxes and compact IDs but omit descriptive occlusion labels.",
     )
     return parser.parse_args()
 

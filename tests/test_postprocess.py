@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from traffic_agent.detection import DetectorConfig
@@ -151,6 +153,50 @@ def test_normalized_roi_keeps_road_and_rejects_exclusion_zone() -> None:
 
     assert [item.class_name for item in kept] == ["person"]
     assert [item.reason for item in rejected] == ["outside_road_user_roi"]
+
+
+def test_association_group_exclusion_rejects_vru_but_keeps_vehicle() -> None:
+    roi = RoadUserROI(
+        include_polygons=(((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)),),
+        exclude_polygons_by_association_group=(
+            ("vru", (((0.4, 0.4), (0.7, 0.4), (0.7, 0.8), (0.4, 0.8)),)),
+        ),
+    )
+    car = _detection("car", 2, 0.90, (180.0, 100.0, 220.0, 150.0))
+    pedestrian = _detection("pedestrian", 0, 0.80, (180.0, 100.0, 220.0, 150.0))
+
+    kept, rejected = postprocess_detections(
+        [car, pedestrian],
+        frame_width=400,
+        frame_height=300,
+        roi=roi,
+    )
+
+    assert [item.class_name for item in kept] == ["car"]
+    assert [(item.detection.class_name, item.reason) for item in rejected] == [
+        ("pedestrian", "outside_road_user_roi")
+    ]
+
+
+def test_association_group_exclusion_is_loaded_from_json(tmp_path) -> None:
+    path = tmp_path / "roi.json"
+    path.write_text(
+        json.dumps(
+            {
+                "coordinate_space": "pixels",
+                "exclude_polygons_by_association_group": {
+                    "vru": [[[10, 10], [30, 10], [30, 30], [10, 30]]]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    roi = RoadUserROI.from_json(path)
+
+    assert dict(roi.exclude_polygons_by_association_group)["vru"] == (
+        ((10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)),
+    )
 
 
 def test_invalid_detection_is_rejected_explicitly() -> None:

@@ -48,7 +48,10 @@ python run_v4.py \
 
 The ROI is optional until a verified polygon has been drawn. Do not use the
 example full-frame ROI as evidence that roof/building false positives were
-removed. A V4 run emits:
+removed. Scene-specific ROI JSON may define global `exclude_polygons` and
+`exclude_polygons_by_association_group`. Use the latter when a false-positive
+zone applies only to `vru` or `road_vehicle`; a global exclusion can silently
+delete a valid road user before tracking. A V4 run emits:
 
 - `detections.csv`: consolidated detections before tracking.
 - `rejected_detections.csv`: rejected boxes and explicit reasons.
@@ -86,6 +89,10 @@ python run_v4.py \
 
 The manifest records SHA256 values for both cache inputs so an ROI replay is
 auditable and cannot be confused with fresh detector inference.
+
+The verification renderer draws every track row. `max_labels_per_frame` caps
+only descriptive labels; capped, colliding and short-occluded rows retain a
+compact `#ID` badge. Check `id_labels_missing == 0` in the renderer report.
 
 ## Ground-truth annotation gate
 
