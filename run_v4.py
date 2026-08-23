@@ -27,6 +27,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Replay a prior detections.csv without running detector inference.",
     )
+    parser.add_argument(
+        "--cached-rejected-detections",
+        type=Path,
+        default=None,
+        help=(
+            "Reconsider only outside_road_user_roi rows from a prior "
+            "rejected_detections.csv using the current ROI."
+        ),
+    )
     parser.add_argument("--max-seconds", type=float, default=None)
     parser.add_argument("--confirmation-observations", type=int, default=3)
     parser.add_argument(
@@ -54,6 +63,7 @@ def main() -> None:
             road_user_roi=args.road_user_roi,
             exit_roi=args.exit_roi,
             cached_detections=args.cached_detections,
+            cached_rejected_detections=args.cached_rejected_detections,
             max_seconds=args.max_seconds,
             confirmation_observations=args.confirmation_observations,
             max_prediction_frames=args.max_prediction_frames,

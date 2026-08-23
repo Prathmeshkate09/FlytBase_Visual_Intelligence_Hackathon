@@ -12,6 +12,7 @@ from traffic_agent.pipeline_v4 import (
     PipelineV4Config,
     _apply_confidence_thresholds,
     _confirmed_track_ids,
+    _extend_cached_detections,
     _final_summary_rows,
     _load_cached_detections,
     load_detector_config,
@@ -68,6 +69,32 @@ def test_cached_detection_loader_and_class_threshold_filter(tmp_path: Path) -> N
     assert [item.reason for item in rejected] == [
         "below_class_confidence_threshold"
     ]
+
+
+def test_cached_rejected_loader_restores_only_roi_rejections(tmp_path: Path) -> None:
+    accepted_path = tmp_path / "detections.csv"
+    accepted_path.write_text(
+        "frame,class_id,class_name,confidence,x1,y1,x2,y2\n"
+        "0,2,car,0.80,1,2,11,22\n",
+        encoding="utf-8",
+    )
+    rejected_path = tmp_path / "rejected_detections.csv"
+    rejected_path.write_text(
+        "frame,class_id,class_name,confidence,x1,y1,x2,y2,reason\n"
+        "0,0,pedestrian,0.75,20,20,30,40,outside_road_user_roi\n"
+        "0,3,motorcycle,0.90,40,20,55,40,rider_duplicate_suppressed\n"
+        "1,1,bicycle,0.70,60,20,75,40,duplicate_suppressed\n",
+        encoding="utf-8",
+    )
+
+    accepted = _load_cached_detections(accepted_path)
+    recovered = _load_cached_detections(
+        rejected_path, allowed_reasons={"outside_road_user_roi"}
+    )
+    _extend_cached_detections(accepted, recovered)
+
+    assert [item.class_name for item in accepted[0]] == ["car", "pedestrian"]
+    assert 1 not in accepted
 
 
 def _write_detector_config(

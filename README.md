@@ -63,6 +63,30 @@ SAHI at 4K is compute-heavy. After the smoke test passes, benchmark a short
 clip before changing `batch_size`; reduce it from 4 if a Colab T4 runs out of
 GPU memory.
 
+### Replaying cached detections after an ROI correction
+
+Detector inference does not need to be repeated when only the road-user ROI
+changes. Supply the prior accepted cache and its rejection audit together.
+Only rows rejected as `outside_road_user_roi` are reconsidered; duplicate,
+rider and confidence rejections remain rejected:
+
+```bash
+python run_v4.py \
+  --input /content/intersection_verify_30_45.mp4 \
+  --output /content/flytbase_results/level1_v4_roi_replay \
+  --detection-config config/detection_visdrone_yolov9e_hybrid.json \
+  --tracker-config config/botsort_drone_v4.yaml \
+  --road-user-roi config/road_user_roi_intersection_v4.json \
+  --cached-detections /content/gpu_run/detections.csv \
+  --cached-rejected-detections /content/gpu_run/rejected_detections.csv \
+  --confirmation-observations 5 \
+  --max-prediction-frames 2 \
+  --max-seconds 15
+```
+
+The manifest records SHA256 values for both cache inputs so an ROI replay is
+auditable and cannot be confused with fresh detector inference.
+
 ## Ground-truth annotation gate
 
 Proxy metrics and a visually convincing evidence video do not prove tracking

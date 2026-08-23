@@ -50,10 +50,10 @@ VIDEO_FILENAME_HINT = "source_video_89f.mp4"
 
 # Aerial-domain detector experiment. Start full-frame at high resolution;
 # retain SAHI only if a later controlled comparison improves verified recall.
-DETECTOR_MODE = "aerial_full_frame"
-MODEL_REPOSITORY = "dronefreak/visdrone-yolov26l"
+DETECTOR_MODE = "aerial_yolov9e_full_frame"
+MODEL_REPOSITORY = "dronefreak/visdrone-yolov9e"
 MODEL_FILENAME = "best.pt"
-MODEL_SHA256 = "0a8be5595dd955433c3d72a8fd951eadc886052a2034c18c0171827a2e5cf4f2"
+MODEL_REVISION = "4593a8ea82676f41c46a7cf3e89e39984ac7a2af"
 
 SMOKE_SECONDS = 3
 FULL_RUN_SECONDS = 15
@@ -236,15 +236,11 @@ MODEL_NAME_OR_PATH = Path(
     hf_hub_download(
         repo_id=MODEL_REPOSITORY,
         filename=MODEL_FILENAME,
+        revision=MODEL_REVISION,
         local_dir=MODELS_DIR,
     )
 )
 model_digest = hashlib.sha256(MODEL_NAME_OR_PATH.read_bytes()).hexdigest()
-if model_digest != MODEL_SHA256:
-    raise RuntimeError(
-        f"Aerial model SHA256 mismatch: {model_digest}; expected {MODEL_SHA256}"
-    )
-
 model_probe = YOLO(str(MODEL_NAME_OR_PATH))
 print("Aerial model:", MODEL_NAME_OR_PATH)
 print("Aerial model SHA256:", model_digest)
@@ -332,13 +328,13 @@ detector_config = {
         "motor": "motorcycle",
     },
     "class_confidence_thresholds": {
-        "pedestrian": 0.12,
-        "bicycle": 0.10,
-        "car": 0.08,
-        "lgv": 0.08,
-        "truck": 0.08,
-        "bus": 0.08,
-        "motorcycle": 0.10,
+        "pedestrian": 0.15,
+        "bicycle": 0.15,
+        "car": 0.12,
+        "lgv": 0.12,
+        "truck": 0.12,
+        "bus": 0.12,
+        "motorcycle": 0.05,
     },
 }
 
@@ -367,9 +363,11 @@ command = [
     "--tracker-config",
     str(REPO_DIR / "config" / "botsort_drone_v4.yaml"),
     "--road-user-roi",
-    str(REPO_DIR / "config" / "road_user_roi_intersection_v3.json"),
+    str(REPO_DIR / "config" / "road_user_roi_intersection_v4.json"),
     "--max-prediction-frames",
-    "15",
+    "2",
+    "--confirmation-observations",
+    "5",
     "--max-seconds",
     str(SMOKE_SECONDS),
 ]

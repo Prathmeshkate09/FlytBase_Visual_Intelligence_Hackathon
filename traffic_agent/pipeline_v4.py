@@ -32,6 +32,7 @@ class PipelineV4Config:
     road_user_roi: Path | None = None
     exit_roi: Path | None = None
     cached_detections: Path | None = None
+    cached_rejected_detections: Path | None = None
     max_seconds: float | None = None
     confirmation_observations: int = 3
     max_prediction_frames: int = 15
@@ -52,6 +53,19 @@ class PipelineV4Config:
             raise FileNotFoundError(
                 f"Cached detections file not found: {self.cached_detections}"
             )
+        if (
+            self.cached_rejected_detections is not None
+            and not self.cached_rejected_detections.exists()
+        ):
+            raise FileNotFoundError(
+                "Cached rejected detections file not found: "
+                f"{self.cached_rejected_detections}"
+            )
+        if (
+            self.cached_rejected_detections is not None
+            and self.cached_detections is None
+        ):
+            raise ValueError("cached_rejected_detections requires cached_detections")
         if self.max_seconds is not None and self.max_seconds <= 0:
             raise ValueError("max_seconds must be positive")
         if self.max_prediction_frames < 0:
@@ -221,7 +235,9 @@ def _rejected_row(
     return row
 
 
-def _load_cached_detections(path: Path) -> dict[int, list[Detection]]:
+def _load_cached_detections(
+    path: Path, *, allowed_reasons: set[str] | None = None
+) -> dict[int, list[Detection]]:
     required = {
         "frame",
         "class_id",
@@ -241,6 +257,10 @@ def _load_cached_detections(path: Path) -> dict[int, list[Detection]]:
                 f"Cached detections are missing columns: {sorted(missing)}"
             )
         for row in reader:
+            if allowed_reasons is not None:
+                reason = str(row.get("reason") or "")
+                if reason not in allowed_reasons:
+                    continue
             source_classes = tuple(
                 value for value in str(row.get("source_classes", "")).split("+") if value
             )
@@ -258,9 +278,17 @@ def _load_cached_detections(path: Path) -> dict[int, list[Detection]]:
             )
             detection.validate()
             grouped.setdefault(int(row["frame"]), []).append(detection)
-    if not grouped:
+    if not grouped and allowed_reasons is None:
         raise ValueError(f"Cached detections file is empty: {path}")
     return grouped
+
+
+def _extend_cached_detections(
+    destination: dict[int, list[Detection]],
+    additions: dict[int, list[Detection]],
+) -> None:
+    for frame, detections in additions.items():
+        destination.setdefault(frame, []).extend(detections)
 
 
 def _apply_confidence_thresholds(
@@ -365,6 +393,11 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
                 if config.cached_detections
                 else None
             ),
+            "cached_rejected_detections": (
+                _resolve_project_path(config.cached_rejected_detections)
+                if config.cached_rejected_detections
+                else None
+            ),
         }
     )
     config.validate()
@@ -396,6 +429,13 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         if config.cached_detections
         else None
     )
+    if config.cached_rejected_detections is not None:
+        assert cached_detections is not None
+        recovered = _load_cached_detections(
+            config.cached_rejected_detections,
+            allowed_reasons={"outside_road_user_roi"},
+        )
+        _extend_cached_detections(cached_detections, recovered)
     tracker = GroupedBoTSORT(
         config.tracker_config,
         device=detector_config.device,
@@ -639,6 +679,11 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         "cached_detections_sha256": (
             _sha256(config.cached_detections) if config.cached_detections else None
         ),
+        "cached_rejected_detections_sha256": (
+            _sha256(config.cached_rejected_detections)
+            if config.cached_rejected_detections
+            else None
+        ),
         "tracks_sha256": trajectory_hash,
         "source": {
             "video": str(config.input_video),
@@ -658,6 +703,11 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "exit_roi": str(config.exit_roi) if config.exit_roi else None,
             "cached_detections": (
                 str(config.cached_detections) if config.cached_detections else None
+            ),
+            "cached_rejected_detections": (
+                str(config.cached_rejected_detections)
+                if config.cached_rejected_detections
+                else None
             ),
         },
         "versions": {
