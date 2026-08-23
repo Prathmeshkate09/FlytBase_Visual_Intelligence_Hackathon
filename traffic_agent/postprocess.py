@@ -23,6 +23,17 @@ ASSOCIATION_GROUPS = {
 
 DEFAULT_ROAD_USER_CLASSES = tuple(ASSOCIATION_GROUPS)
 
+# When two different association pools produce essentially the same box, keep
+# the more specific road-user mode.  This is intentionally used only for
+# near-identical boxes; an ordinary pedestrian overlapping a vehicle must not
+# disappear merely because the boxes intersect.
+PHYSICAL_DUPLICATE_PRIORITY = {
+    "pedestrian": 0,
+    "cyclist": 1,
+    "road_vehicle": 2,
+    "motorcycle": 3,
+}
+
 
 @dataclass(frozen=True)
 class Detection:
@@ -94,6 +105,9 @@ class PostprocessConfig:
     merge_iou_threshold: float = 0.75
     merge_ios_threshold: float = 0.90
     minimum_box_area_px2: float = 16.0
+    physical_duplicate_iou_threshold: float = 0.90
+    physical_duplicate_ios_threshold: float = 0.98
+    physical_duplicate_area_ratio_threshold: float = 0.80
 
     def validate(self) -> None:
         if not self.allowed_class_names:
@@ -104,6 +118,12 @@ class PostprocessConfig:
             raise ValueError("merge_ios_threshold must be in (0, 1]")
         if self.minimum_box_area_px2 < 0:
             raise ValueError("minimum_box_area_px2 cannot be negative")
+        if not 0.0 < self.physical_duplicate_iou_threshold <= 1.0:
+            raise ValueError("physical_duplicate_iou_threshold must be in (0, 1]")
+        if not 0.0 < self.physical_duplicate_ios_threshold <= 1.0:
+            raise ValueError("physical_duplicate_ios_threshold must be in (0, 1]")
+        if not 0.0 < self.physical_duplicate_area_ratio_threshold <= 1.0:
+            raise ValueError("physical_duplicate_area_ratio_threshold must be in (0, 1]")
 
 
 def _point_in_polygon(point: tuple[float, float], polygon: tuple[tuple[float, float], ...]) -> bool:
@@ -199,8 +219,10 @@ def box_ios(first: Detection, second: Detection) -> float:
     return intersection / smaller_area if smaller_area > 0 else 0.0
 
 
-def _merge_cluster(cluster: list[Detection]) -> Detection:
-    winner = max(cluster, key=lambda detection: detection.confidence)
+def _merge_cluster(
+    cluster: list[Detection], *, winner: Detection | None = None
+) -> Detection:
+    winner = winner or max(cluster, key=lambda detection: detection.confidence)
     weights = [max(detection.confidence, 1e-6) for detection in cluster]
     total_weight = sum(weights)
 
@@ -269,6 +291,65 @@ def _duplicate_clusters(
     return list(clusters.values())
 
 
+def _physical_duplicate_clusters(
+    detections: Iterable[Detection], config: PostprocessConfig
+) -> list[list[Detection]]:
+    """Cluster near-identical boxes emitted into different tracker pools.
+
+    A rider can be predicted as both ``person`` and ``car``/``motorcycle`` with
+    virtually identical geometry.  Group-specific association would otherwise
+    create two persistent IDs for that one physical road user.  Requiring both
+    very high overlap and comparable areas avoids suppressing a real pedestrian
+    who is merely standing beside or partially inside a vehicle box.
+    """
+    config.validate()
+    items = list(detections)
+    if not items:
+        return []
+    parents = list(range(len(items)))
+
+    def find(index: int) -> int:
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(first: int, second: int) -> None:
+        first_root = find(first)
+        second_root = find(second)
+        if first_root != second_root:
+            parents[second_root] = first_root
+
+    for first_index, first in enumerate(items):
+        for second_index in range(first_index + 1, len(items)):
+            second = items[second_index]
+            if first.association_group == second.association_group:
+                continue
+            area_ratio = min(first.area, second.area) / max(first.area, second.area)
+            near_identical = box_iou(first, second) >= config.physical_duplicate_iou_threshold
+            near_equal_containment = (
+                box_ios(first, second) >= config.physical_duplicate_ios_threshold
+                and area_ratio >= config.physical_duplicate_area_ratio_threshold
+            )
+            if near_identical or near_equal_containment:
+                union(first_index, second_index)
+
+    clusters: dict[int, list[Detection]] = {}
+    for index, detection in enumerate(items):
+        clusters.setdefault(find(index), []).append(detection)
+    return list(clusters.values())
+
+
+def _physical_winner(cluster: list[Detection]) -> Detection:
+    return max(
+        cluster,
+        key=lambda detection: (
+            PHYSICAL_DUPLICATE_PRIORITY.get(detection.association_group, -1),
+            detection.confidence,
+        ),
+    )
+
+
 def merge_group_duplicates(
     detections: Iterable[Detection], config: PostprocessConfig
 ) -> list[Detection]:
@@ -311,9 +392,9 @@ def postprocess_detections(
             continue
         accepted.append(detection)
 
-    clusters = _duplicate_clusters(accepted, active_config)
-    merged = [_merge_cluster(cluster) for cluster in clusters]
-    for cluster in clusters:
+    group_clusters = _duplicate_clusters(accepted, active_config)
+    group_merged = [_merge_cluster(cluster) for cluster in group_clusters]
+    for cluster in group_clusters:
         if len(cluster) <= 1:
             continue
         winner = max(cluster, key=lambda detection: detection.confidence)
@@ -322,5 +403,19 @@ def postprocess_detections(
             for detection in cluster
             if detection is not winner
         )
+
+    physical_clusters = _physical_duplicate_clusters(group_merged, active_config)
+    merged: list[Detection] = []
+    for cluster in physical_clusters:
+        winner = _physical_winner(cluster)
+        merged.append(_merge_cluster(cluster, winner=winner))
+        if len(cluster) > 1:
+            rejected.extend(
+                RejectedDetection(detection, "physical_duplicate_suppressed")
+                for detection in cluster
+                if detection is not winner
+            )
+
     merged.sort(key=lambda detection: detection.confidence, reverse=True)
     return merged, rejected
+
