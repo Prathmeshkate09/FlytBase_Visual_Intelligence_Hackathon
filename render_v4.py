@@ -18,6 +18,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--max-width", type=int, default=1920)
     parser.add_argument("--trail-length", type=int, default=20)
+    parser.add_argument(
+        "--max-labels-per-frame",
+        type=int,
+        default=None,
+        help="Limit labels only; all boxes are still rendered.",
+    )
+    parser.add_argument(
+        "--hide-occluded-labels",
+        action="store_true",
+        help="Keep dashed occlusion boxes but omit their labels.",
+    )
     return parser.parse_args()
 
 
@@ -32,6 +43,8 @@ def main() -> None:
         config=RendererV4Config(
             max_width=args.max_width,
             trail_length=args.trail_length,
+            max_labels_per_frame=args.max_labels_per_frame,
+            label_occluded=not args.hide_occluded_labels,
         ),
     )
     print(json.dumps(report, indent=2))
@@ -39,4 +52,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
