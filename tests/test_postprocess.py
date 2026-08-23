@@ -66,6 +66,34 @@ def test_pedestrian_is_not_merged_with_overlapping_vehicle() -> None:
     assert {item.association_group for item in merged} == {"pedestrian", "road_vehicle"}
 
 
+def test_near_identical_cross_group_duplicate_prefers_vehicle() -> None:
+    pedestrian = _detection("person", 0, 0.90)
+    car = _detection("car", 2, 0.25, (100.5, 100.0, 150.5, 140.0))
+
+    merged, rejected = postprocess_detections(
+        [pedestrian, car], frame_width=400, frame_height=300
+    )
+
+    assert len(merged) == 1
+    assert merged[0].class_name == "car"
+    assert merged[0].source_classes == ("car", "person")
+    assert [(item.detection.class_name, item.reason) for item in rejected] == [
+        ("person", "physical_duplicate_suppressed")
+    ]
+
+
+def test_contained_pedestrian_is_not_suppressed_as_vehicle_duplicate() -> None:
+    pedestrian = _detection("person", 0, 0.85, (115.0, 105.0, 130.0, 137.0))
+    car = _detection("car", 2, 0.90, (100.0, 100.0, 150.0, 140.0))
+
+    merged, rejected = postprocess_detections(
+        [pedestrian, car], frame_width=400, frame_height=300
+    )
+
+    assert len(merged) == 2
+    assert not rejected
+
+
 def test_ios_merges_tile_boundary_box_containment() -> None:
     large = _detection("car", 2, 0.70, (90.0, 90.0, 160.0, 150.0))
     contained = _detection("truck", 7, 0.80, (100.0, 100.0, 150.0, 140.0))
@@ -116,3 +144,4 @@ def test_detector_config_covers_required_coco_road_users() -> None:
 def test_detector_config_rejects_duplicate_class_ids() -> None:
     with pytest.raises(ValueError, match="duplicates"):
         DetectorConfig(class_ids=(0, 2, 2)).validate()
+
