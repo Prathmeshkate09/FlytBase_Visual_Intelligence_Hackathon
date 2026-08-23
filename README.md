@@ -63,6 +63,30 @@ SAHI at 4K is compute-heavy. After the smoke test passes, benchmark a short
 clip before changing `batch_size`; reduce it from 4 if a Colab T4 runs out of
 GPU memory.
 
+## Ground-truth annotation gate
+
+Proxy metrics and a visually convincing evidence video do not prove tracking
+accuracy. Create a CVAT seed package for the development and held-out clips,
+then manually correct every frame before exporting COCO/MOT ground truth:
+
+```bash
+python prepare_cvat_annotations.py \
+  --video /content/drive/MyDrive/FlytBase/input/intersection_verify_30_45.mp4 \
+  --tracks /content/drive/MyDrive/FlytBase/results/level1_v4_heldout/tracks.csv \
+  --track-summary /content/drive/MyDrive/FlytBase/results/level1_v4_heldout/track_summary.csv \
+  --output /content/drive/MyDrive/FlytBase/annotations/heldout_seed \
+  --task-name FlytBase-held-out-30-45s \
+  --clip-role held-out
+```
+
+The generated `cvat_seed_annotations.zip` is explicitly marked
+`seed_predictions_only`. Import it into a CVAT interpolation task with the
+exact source video. Add missed road users, remove false roof/building tracks,
+repair ID switches and distinguish LGV/HGV where the pixels support it. Do not
+rename this seed package as ground truth. Level 1 remains `not_evaluated` until
+the corrected annotations are evaluated for detection precision/recall and
+tracking IDF1/HOTA.
+
 ## Engineering boundary
 
 This project separates what the pixels support from what requires calibration:
