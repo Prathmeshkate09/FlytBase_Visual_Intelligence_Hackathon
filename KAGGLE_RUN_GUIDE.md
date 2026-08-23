@@ -87,7 +87,7 @@ saved as notebook output.
 ## Notebook execution order
 
 1. Edit the user settings cell.
-2. Verify `torch.cuda.is_available()` and the GPU name.
+2. Verify the GPU name, supported CUDA architectures and real CUDA tensor probe.
 3. Confirm the correct MP4 was discovered.
 4. Pull `level1-v4` from GitHub.
 5. Install dependencies.
@@ -132,6 +132,15 @@ The notebook initially runs the existing V4 pipeline. Tracker adapters and
 evaluation improvements will arrive through new commits on `level1-v4`; rerun
 the Git pull cell to receive them.
 
+### Kaggle P100 compatibility
+
+Kaggle may assign a Tesla P100 with CUDA compute capability `sm_60`. A newer
+preinstalled PyTorch CUDA image can report CUDA as available while omitting the
+actual `sm_60` kernels. The notebook therefore installs the official PyTorch
+2.9.1 CUDA 12.6 build before importing torch and performs a real tensor
+calculation on the GPU. Do not remove this runtime check merely because
+`torch.cuda.is_available()` returns true.
+
 ## Saving and downloading results
 
 Use **Save Version** in Kaggle after a successful run. Kaggle preserves files
@@ -143,4 +152,3 @@ kaggle kernels output YOUR_KAGGLE_USERNAME/YOUR_NOTEBOOK-SLUG -p C:\path\to\down
 ```
 
 Do not commit videos, datasets, trained weights or API credentials to GitHub.
-

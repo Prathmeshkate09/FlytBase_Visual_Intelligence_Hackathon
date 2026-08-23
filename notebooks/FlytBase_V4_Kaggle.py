@@ -86,6 +86,27 @@ import sys
 
 subprocess.run(["nvidia-smi"], check=True)
 
+# Kaggle may assign a Pascal-generation Tesla P100 (compute capability 6.0).
+# Its default CUDA 12.8 PyTorch image can omit sm_60 kernels even though
+# torch.cuda.is_available() returns True. The official CUDA 12.6 wheels retain
+# Pascal support, so install them before torch is imported by this kernel.
+subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "--upgrade",
+        "--force-reinstall",
+        "torch==2.9.1",
+        "torchvision==0.24.1",
+        "--index-url",
+        "https://download.pytorch.org/whl/cu126",
+    ],
+    check=True,
+)
+
 import torch
 
 print("Python:", sys.version)
@@ -95,6 +116,21 @@ if not torch.cuda.is_available():
     raise RuntimeError("CUDA is unavailable. Stop and set Kaggle Accelerator to GPU.")
 print("GPU:", torch.cuda.get_device_name(0))
 print("GPU memory (GiB):", round(torch.cuda.get_device_properties(0).total_memory / 2**30, 2))
+print("PyTorch CUDA architectures:", torch.cuda.get_arch_list())
+
+device_capability = torch.cuda.get_device_capability(0)
+required_arch = f"sm_{device_capability[0]}{device_capability[1]}"
+if required_arch not in torch.cuda.get_arch_list():
+    raise RuntimeError(
+        f"Installed PyTorch does not contain kernels for {required_arch}: "
+        f"{torch.cuda.get_arch_list()}"
+    )
+
+# `is_available()` alone is insufficient: execute a real CUDA kernel.
+cuda_probe = (torch.ones(1024, device="cuda") * 2).sum().item()
+if cuda_probe != 2048.0:
+    raise RuntimeError(f"CUDA computation probe returned {cuda_probe}, expected 2048.0")
+print("CUDA computation probe: passed")
 
 # %% [markdown]
 # ## 3. Find the attached videos and select the requested one
@@ -451,4 +487,3 @@ for path in summary_files:
 
 print("\nSave a Kaggle Notebook version to preserve everything under:")
 print(WORK_ROOT)
-
