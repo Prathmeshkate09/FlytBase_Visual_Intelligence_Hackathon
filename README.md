@@ -88,6 +88,24 @@ rename this seed package as ground truth. Level 1 remains `not_evaluated` until
 the corrected annotations are evaluated for detection precision/recall and
 tracking IDF1/HOTA.
 
+After correcting the task, export **MOT 1.0** from CVAT and run the pinned
+official TrackEval implementation:
+
+```bash
+pip install -r requirements-eval.txt
+python evaluate_v4.py \
+  --mot-ground-truth /content/heldout_corrected_mot.zip \
+  --tracks /content/drive/MyDrive/FlytBase/results/level1_v4_heldout/tracks.csv \
+  --track-summary /content/drive/MyDrive/FlytBase/results/level1_v4_heldout/track_summary.csv \
+  --run-manifest /content/drive/MyDrive/FlytBase/results/level1_v4_heldout/run_manifest.json \
+  --output /content/drive/MyDrive/FlytBase/results/level1_v4_heldout/quality_report_ground_truth.json
+```
+
+The evaluator verifies the trajectory hash, removes CVAT rows explicitly
+marked ignored, computes category-agnostic road-user HOTA/IDF1 and IoU-0.5
+precision/recall, and reports mode-classification accuracy separately. The
+status changes to `passed` only when every configured gate passes.
+
 ## Engineering boundary
 
 This project separates what the pixels support from what requires calibration:
