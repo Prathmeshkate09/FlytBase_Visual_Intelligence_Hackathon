@@ -19,6 +19,7 @@ from .postprocess import (
     RoadUserROI,
     postprocess_detections,
 )
+from .stitching import StitchingConfig, stitch_tracks
 from .tracker import GroupedBoTSORT, TrackObservation
 
 
@@ -32,6 +33,7 @@ class PipelineV4Config:
     exit_roi: Path | None = None
     max_seconds: float | None = None
     confirmation_observations: int = 3
+    enable_offline_stitching: bool = True
 
     def validate(self) -> None:
         if not self.input_video.exists():
@@ -71,6 +73,7 @@ TRACK_FIELDS = [
     "frame",
     "timestamp_s",
     "track_id",
+    "source_track_id",
     "native_track_id",
     "association_group",
     "class_id",
@@ -105,6 +108,19 @@ REJECTED_PREDICTION_FIELDS = [
     "clipped_x2",
     "clipped_y2",
     "reason",
+]
+
+STITCH_FIELDS = [
+    "old_track_id",
+    "new_track_id",
+    "canonical_track_id",
+    "gap_frames",
+    "endpoint_distance_px",
+    "predicted_distance_px",
+    "distance_limit_px",
+    "area_ratio",
+    "direction_change_degrees",
+    "score",
 ]
 
 
@@ -165,6 +181,7 @@ def _track_row(observation: TrackObservation, fps: float) -> dict[str, Any]:
         "frame": observation.frame,
         "timestamp_s": round(observation.frame / fps, 6),
         "track_id": observation.track_id,
+        "source_track_id": observation.track_id,
         "native_track_id": observation.native_track_id,
         "association_group": observation.association_group,
         # Compatibility aliases retain the original per-frame detector vote.
@@ -201,6 +218,58 @@ def _write_rows(path: Path, fields: list[str], rows: Iterable[dict[str, Any]]) -
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _final_summary_rows(
+    stitched: Any, native_summaries: dict[int, Any]
+) -> list[dict[str, Any]]:
+    import pandas as pd
+
+    summaries: list[dict[str, Any]] = []
+    for final_track_id, group in stitched.groupby("track_id", sort=True):
+        observed = group[group["observed"].astype(bool)].copy()
+        source_ids = sorted(int(value) for value in group["source_track_id"].unique())
+        final_source_id = max(
+            source_ids,
+            key=lambda value: (
+                native_summaries[value].last_frame,
+                native_summaries[value].last_observed_frame,
+            ),
+        )
+        if observed.empty:
+            final_class_id, final_class_name, final_class_confidence = -1, "unknown", 0.0
+            last_observed_frame = -1
+        else:
+            observed["_class_score"] = pd.to_numeric(
+                observed["confidence"], errors="coerce"
+            ).fillna(0.0)
+            scores = (
+                observed.groupby(["detected_class_id", "detected_class_name"])[
+                    "_class_score"
+                ]
+                .sum()
+                .sort_values(ascending=False)
+            )
+            final_class_id, final_class_name = scores.index[0]
+            total_score = float(scores.sum())
+            final_class_confidence = (
+                float(scores.iloc[0] / total_score) if total_score > 0 else 0.0
+            )
+            last_observed_frame = int(observed["frame"].max())
+        summaries.append(
+            {
+                "track_id": int(final_track_id),
+                "state": native_summaries[final_source_id].state.value,
+                "first_frame": int(group["frame"].min()),
+                "last_frame": int(group["frame"].max()),
+                "last_observed_frame": last_observed_frame,
+                "observation_count": int(observed["frame"].nunique()),
+                "final_class_id": int(final_class_id),
+                "final_class_name": str(final_class_name),
+                "final_class_confidence": final_class_confidence,
+            }
+        )
+    return summaries
 
 
 def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
@@ -252,7 +321,6 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
     detection_rows: list[dict[str, Any]] = []
     rejected_rows: list[dict[str, Any]] = []
     track_rows: list[dict[str, Any]] = []
-    observed_track_rows: list[dict[str, Any]] = []
     prior_removed_ids: set[int] = set()
     processed_frames = 0
     final_frame = -1
@@ -287,35 +355,113 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             rejected_rows.extend(_rejected_row(item, frame_number, fps) for item in rejected)
             rows = [_track_row(item, fps) for item in observations]
             track_rows.extend(rows)
-            observed_track_rows.extend(row for row in rows if row["observed"])
             processed_frames += 1
     finally:
         progress.close()
         capture.release()
 
     lifecycle.finalize_video(max(final_frame, 0))
+    native_summaries = {
+        summary.track_id: summary for summary in lifecycle.summaries()
+    }
+    import pandas as pd
+
+    native_frame = pd.DataFrame(track_rows, columns=TRACK_FIELDS)
+    if native_frame.empty:
+        final_frame_table = native_frame.copy()
+        stitch_table = pd.DataFrame(columns=STITCH_FIELDS)
+    elif config.enable_offline_stitching:
+        final_frame_table, stitch_table = stitch_tracks(
+            native_frame, StitchingConfig()
+        )
+    else:
+        final_frame_table = native_frame.copy()
+        stitch_table = pd.DataFrame(columns=STITCH_FIELDS)
+    final_track_rows = final_frame_table.to_dict("records")
+    final_observed_rows = final_frame_table[
+        final_frame_table["observed"].astype(bool)
+    ].to_dict("records")
+    final_summary_rows = _final_summary_rows(final_frame_table, native_summaries)
+    source_to_final = {
+        int(source): int(final_track)
+        for source, final_track in final_frame_table[
+            ["source_track_id", "track_id"]
+        ].drop_duplicates().itertuples(index=False, name=None)
+    }
+
+    native_event_rows = [
+        {**asdict(event), "state": event.state.value}
+        for event in lifecycle.events
+    ]
+    final_event_rows = [
+        {
+            **row,
+            "track_id": source_to_final[int(row["track_id"])],
+            "source_track_id": int(row["track_id"]),
+        }
+        for row in native_event_rows
+    ]
+    for stitch in stitch_table.to_dict("records"):
+        new_track_id = int(stitch["new_track_id"])
+        start_frame = int(
+            final_frame_table.loc[
+                final_frame_table["source_track_id"] == new_track_id, "frame"
+            ].min()
+        )
+        final_event_rows.append(
+            {
+                "frame": start_frame,
+                "track_id": int(stitch["canonical_track_id"]),
+                "source_track_id": new_track_id,
+                "event": "stitched",
+                "state": "recovered",
+                "reason": "offline_motion_consistent_tracklet_stitch",
+            }
+        )
+    final_event_rows.sort(
+        key=lambda row: (int(row["frame"]), int(row["track_id"]), str(row["event"]))
+    )
+
     _write_rows(config.output_dir / "detections.csv", DETECTION_FIELDS, detection_rows)
     _write_rows(
         config.output_dir / "rejected_detections.csv",
         DETECTION_FIELDS + ["reason"],
         rejected_rows,
     )
-    _write_rows(config.output_dir / "tracks.csv", TRACK_FIELDS, track_rows)
-    _write_rows(config.output_dir / "raw_tracks.csv", TRACK_FIELDS, observed_track_rows)
+    _write_rows(config.output_dir / "tracks_native.csv", TRACK_FIELDS, track_rows)
+    _write_rows(config.output_dir / "tracks.csv", TRACK_FIELDS, final_track_rows)
+    _write_rows(config.output_dir / "raw_tracks.csv", TRACK_FIELDS, final_observed_rows)
     _write_rows(
         config.output_dir / "rejected_track_predictions.csv",
         REJECTED_PREDICTION_FIELDS,
         [asdict(item) for item in tracker.rejected_predictions],
     )
     _write_rows(
-        config.output_dir / "track_events.csv",
+        config.output_dir / "track_events_native.csv",
         ["frame", "track_id", "event", "state", "reason"],
+        native_event_rows,
+    )
+    _write_rows(
+        config.output_dir / "track_events.csv",
+        ["frame", "track_id", "source_track_id", "event", "state", "reason"],
+        final_event_rows,
+    )
+    _write_rows(
+        config.output_dir / "track_summary_native.csv",
         [
-            {
-                **asdict(event),
-                "state": event.state.value,
-            }
-            for event in lifecycle.events
+            "track_id",
+            "state",
+            "first_frame",
+            "last_frame",
+            "last_observed_frame",
+            "observation_count",
+            "final_class_id",
+            "final_class_name",
+            "final_class_confidence",
+        ],
+        [
+            {**asdict(summary), "state": summary.state.value}
+            for summary in native_summaries.values()
         ],
     )
     _write_rows(
@@ -331,10 +477,12 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "final_class_name",
             "final_class_confidence",
         ],
-        [
-            {**asdict(summary), "state": summary.state.value}
-            for summary in lifecycle.summaries()
-        ],
+        final_summary_rows,
+    )
+    _write_rows(
+        config.output_dir / "track_stitches.csv",
+        STITCH_FIELDS,
+        stitch_table.to_dict("records"),
     )
 
     run_id = str(uuid.uuid4())
@@ -350,12 +498,14 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "processed_frames": processed_frames,
             "merged_detections": len(detection_rows),
             "rejected_detections": len(rejected_rows),
-            "observed_track_rows": len(observed_track_rows),
-            "predicted_track_rows": len(track_rows) - len(observed_track_rows),
+            "observed_track_rows": len(final_observed_rows),
+            "predicted_track_rows": len(final_track_rows) - len(final_observed_rows),
             "rejected_track_predictions": len(tracker.rejected_predictions),
-            "unique_tracks": len(lifecycle.summaries()),
+            "native_unique_tracks": len(native_summaries),
+            "stitched_tracklets": len(stitch_table),
+            "unique_tracks": len(final_summary_rows),
             "internal_expirations": sum(
-                summary.state.value == "expired" for summary in lifecycle.summaries()
+                summary["state"] == "expired" for summary in final_summary_rows
             ),
         },
     }
@@ -395,10 +545,14 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "detections": "detections.csv",
             "rejected_detections": "rejected_detections.csv",
             "tracks": "tracks.csv",
+            "native_tracks": "tracks_native.csv",
             "observed_tracks_compatibility": "raw_tracks.csv",
             "rejected_track_predictions": "rejected_track_predictions.csv",
             "track_events": "track_events.csv",
+            "native_track_events": "track_events_native.csv",
             "track_summary": "track_summary.csv",
+            "native_track_summary": "track_summary_native.csv",
+            "track_stitches": "track_stitches.csv",
             "quality_report": "quality_report.json",
         },
     }
@@ -406,4 +560,5 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         json.dumps(manifest, indent=2, default=str), encoding="utf-8"
     )
     return {"manifest": manifest, "quality_report": quality_report}
+
 
