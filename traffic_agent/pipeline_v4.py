@@ -91,6 +91,22 @@ TRACK_FIELDS = [
     "detection_source",
 ]
 
+REJECTED_PREDICTION_FIELDS = [
+    "frame",
+    "track_id",
+    "native_track_id",
+    "association_group",
+    "raw_x1",
+    "raw_y1",
+    "raw_x2",
+    "raw_y2",
+    "clipped_x1",
+    "clipped_y1",
+    "clipped_x2",
+    "clipped_y2",
+    "reason",
+]
+
 
 def _resolve_project_path(path: Path) -> Path:
     if path.is_absolute():
@@ -287,6 +303,11 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
     _write_rows(config.output_dir / "tracks.csv", TRACK_FIELDS, track_rows)
     _write_rows(config.output_dir / "raw_tracks.csv", TRACK_FIELDS, observed_track_rows)
     _write_rows(
+        config.output_dir / "rejected_track_predictions.csv",
+        REJECTED_PREDICTION_FIELDS,
+        [asdict(item) for item in tracker.rejected_predictions],
+    )
+    _write_rows(
         config.output_dir / "track_events.csv",
         ["frame", "track_id", "event", "state", "reason"],
         [
@@ -331,6 +352,7 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "rejected_detections": len(rejected_rows),
             "observed_track_rows": len(observed_track_rows),
             "predicted_track_rows": len(track_rows) - len(observed_track_rows),
+            "rejected_track_predictions": len(tracker.rejected_predictions),
             "unique_tracks": len(lifecycle.summaries()),
             "internal_expirations": sum(
                 summary.state.value == "expired" for summary in lifecycle.summaries()
@@ -374,6 +396,7 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "rejected_detections": "rejected_detections.csv",
             "tracks": "tracks.csv",
             "observed_tracks_compatibility": "raw_tracks.csv",
+            "rejected_track_predictions": "rejected_track_predictions.csv",
             "track_events": "track_events.csv",
             "track_summary": "track_summary.csv",
             "quality_report": "quality_report.json",
@@ -383,3 +406,4 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         json.dumps(manifest, indent=2, default=str), encoding="utf-8"
     )
     return {"manifest": manifest, "quality_report": quality_report}
+
