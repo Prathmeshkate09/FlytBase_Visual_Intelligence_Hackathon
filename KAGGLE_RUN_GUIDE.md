@@ -141,6 +141,11 @@ actual `sm_60` kernels. The notebook therefore installs the official PyTorch
 calculation on the GPU. Do not remove this runtime check merely because
 `torch.cuda.is_available()` returns true.
 
+The notebook installs `torchvision` without replacing its dependencies. This
+preserves Kaggle's already-loaded Pillow and NumPy modules and avoids an
+in-process package mismatch while retaining the matching CUDA-enabled
+`torchvision` wheel.
+
 ## Saving and downloading results
 
 Use **Save Version** in Kaggle after a successful run. Kaggle preserves files

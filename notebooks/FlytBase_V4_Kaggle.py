@@ -90,6 +90,8 @@ subprocess.run(["nvidia-smi"], check=True)
 # Its default CUDA 12.8 PyTorch image can omit sm_60 kernels even though
 # torch.cuda.is_available() returns True. The official CUDA 12.6 wheels retain
 # Pascal support, so install them before torch is imported by this kernel.
+# Install torchvision without dependencies: replacing Pillow/NumPy inside the
+# live Papermill process can leave already-imported modules in an invalid state.
 subprocess.run(
     [
         sys.executable,
@@ -100,6 +102,21 @@ subprocess.run(
         "--upgrade",
         "--force-reinstall",
         "torch==2.9.1",
+        "--index-url",
+        "https://download.pytorch.org/whl/cu126",
+    ],
+    check=True,
+)
+subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "--upgrade",
+        "--force-reinstall",
+        "--no-deps",
         "torchvision==0.24.1",
         "--index-url",
         "https://download.pytorch.org/whl/cu126",
