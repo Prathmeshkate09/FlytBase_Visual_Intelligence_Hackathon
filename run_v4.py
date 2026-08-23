@@ -23,6 +23,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--exit-roi", type=Path, default=None)
     parser.add_argument("--max-seconds", type=float, default=None)
     parser.add_argument("--confirmation-observations", type=int, default=3)
+    parser.add_argument(
+        "--disable-offline-stitching",
+        action="store_true",
+        help="Keep native BoT-SORT IDs in the final trajectory files.",
+    )
     return parser.parse_args()
 
 
@@ -38,6 +43,7 @@ def main() -> None:
             exit_roi=args.exit_roi,
             max_seconds=args.max_seconds,
             confirmation_observations=args.confirmation_observations,
+            enable_offline_stitching=not args.disable_offline_stitching,
         )
     )
     print(json.dumps(result["quality_report"], indent=2))
@@ -45,3 +51,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
