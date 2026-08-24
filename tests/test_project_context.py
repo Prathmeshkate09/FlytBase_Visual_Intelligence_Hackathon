@@ -21,7 +21,7 @@ def test_project_context_is_complete_and_unverified() -> None:
     state = context_status.load_and_validate_state(REPO_ROOT)
 
     assert state["levels"]["1"]["status"] == "candidate_needs_ground_truth"
-    assert state["ground_truth"]["status"] == "cvat_development_task_awaiting_seed_import"
+    assert state["ground_truth"]["status"] == "cvat_seed_imported_awaiting_manual_correction"
     assert state["ground_truth"]["development_frames"] == 89
     assert state["ground_truth"]["cvat_frame_range"] == "0-88"
     assert state["next_action"]["id"] == "E007"

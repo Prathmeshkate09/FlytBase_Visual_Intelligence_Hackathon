@@ -193,3 +193,41 @@ reviewable reasons that another engineer can verify.
   box/identity checks.
 - Next: inspect the rendered tracks at frames 0 and 88, then mark the seed import
   state in the project context.
+
+## 2026-08-24 - Confirm CVAT seed import and identify initial correction scope
+
+- Request: inspect the first screenshots after importing the seed XML.
+- Actions and evidence: confirmed that rectangle tracks, labels, seed attributes,
+  and object lists render in job `4400803`. The screenshots show frames 1 and 87
+  rather than the requested boundary frames 0 and 88. Visible seed failures
+  include pedestrian-labelled roof/building details, boxes without a real object,
+  and oversized/drifted boxes near structures.
+- Engineering rationale: successful rendering proves the import pathway works,
+  but it does not prove accuracy. These false positives are retained in the seed
+  intentionally so the human correction pass can distinguish detector,
+  association, and prediction failures instead of hiding them before labelling.
+- Result: mark the seed import successful and the task as awaiting complete
+  manual correction; do not classify it as ground truth yet.
+- Limitations: exact boundary alignment at frames 0 and 88 has not been visually
+  captured, and no object identity has been manually validated end-to-end.
+- Next: save, type frame 88 explicitly and inspect it, then return to frame 0 and
+  begin the false-track/coverage correction pass.
+
+## 2026-08-24 - Confirm exact CVAT boundary-frame alignment
+
+- Request: inspect explicit screenshots of the first and last frames after seed
+  import.
+- Actions and evidence: confirmed the CVAT navigation field shows frame 0 in the
+  first screenshot and frame 88 in the second. Imported rectangle tracks render
+  over the same intersection scene at both boundaries, and seed attributes such
+  as `v4_track_id`, `seed_state`, and `review_status` are available.
+- Engineering rationale: verifying both inclusive boundaries rules out a common
+  one-frame offset or truncated-job error before any human correction changes
+  the source evidence.
+- Result: mark seed-to-video boundary alignment as visually confirmed. The task
+  remains uncorrected seed data, not ground truth.
+- Limitations: alignment does not validate any box, class, or physical identity.
+  Visible roof/empty-space false tracks and drifted boxes remain.
+- Next: save the imported job and begin Pass A at frame 0 by reviewing and
+  removing only visually proven false tracks, while preserving ambiguous tracks
+  for closer inspection.
