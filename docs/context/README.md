@@ -8,6 +8,11 @@ This directory is the durable evidence layer for the FlytBase project.
 - `decision_log.md`: accepted, rejected, deferred, and provisional choices.
 - `experiment_log.md`: append-only run history with evidence locations.
 - `metrics_and_gates.md`: mathematical definitions and acceptance criteria.
+- `work_log.md`: append-only record of actions, evidence, engineering rationale,
+  results, limitations, and next steps.
+
+The project owner-facing CVAT workflow is in `docs/CVAT_BEGINNER_GUIDE.md`, and
+the paste-ready task labels are in `config/cvat_labels_level1.json`.
 
 `AGENTS.md` requires future coding sessions to read these files before making material changes. `CODEX.md` is the short human-readable summary.
 

@@ -15,6 +15,9 @@ REQUIRED_CONTEXT_FILES = (
     "docs/context/experiment_log.md",
     "docs/context/metrics_and_gates.md",
     "docs/context/current_state.json",
+    "docs/context/work_log.md",
+    "docs/CVAT_BEGINNER_GUIDE.md",
+    "config/cvat_labels_level1.json",
 )
 
 
@@ -64,7 +67,19 @@ def check_local_assets(state: dict[str, object]) -> list[str]:
         "Multi_Road_Merged_convert_4k.mp4",
         "Multi_Road_1080p.srt",
     )
-    return [str(root / name) for name in expected if not (root / name).is_file()]
+    missing = [str(root / name) for name in expected if not (root / name).is_file()]
+    original_root_value = dataset.get("original_root")
+    if not isinstance(original_root_value, str) or not original_root_value:
+        missing.append("dataset.original_root is missing")
+        return missing
+    original_root = Path(original_root_value)
+    original_videos = ("Intersection_Merged.MP4", "Multi_Road_Merged.MP4")
+    missing.extend(
+        str(original_root / name)
+        for name in original_videos
+        if not (original_root / name).is_file()
+    )
+    return missing
 
 
 def main() -> int:

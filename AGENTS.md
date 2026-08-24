@@ -13,6 +13,7 @@ Before changing code, configuration, experiment data, or project claims, read th
 5. `docs/context/metrics_and_gates.md`
 6. `docs/context/dataset_registry.md`
 7. `docs/context/challenge_brief.md`
+8. `docs/context/work_log.md`
 
 Run `python tools/context_status.py` to print the compact state. Add `--check-local-assets` when working on the machine that contains the dataset.
 
@@ -31,6 +32,7 @@ Run `python tools/context_status.py` to print the compact state. Add `--check-lo
 - Compare trackers on identical cached detections and identical frames. Compare detectors with the same ground-truth split and thresholds.
 - Every material experiment must record the code commit, input hash, configuration, output location, metrics, anchor audit, conclusion, and limitations in `docs/context/experiment_log.md`.
 - Every accepted or rejected architectural choice must update `docs/context/decision_log.md` and `docs/context/current_state.json` in the same change.
+- Every material action must append an entry to `docs/context/work_log.md` in the same change. Record what was requested, what was inspected or changed, evidence, concise engineering rationale, the result, limitations, and the next step. Never record credentials, private data, or hidden chain-of-thought.
 
 ## Current product boundary
 

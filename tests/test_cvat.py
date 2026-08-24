@@ -5,7 +5,11 @@ from xml.etree import ElementTree as ET
 import pandas as pd
 import pytest
 
-from traffic_agent.cvat import VideoMetadata, build_cvat_interpolation_xml
+from traffic_agent.cvat import (
+    VideoMetadata,
+    annotation_instructions,
+    build_cvat_interpolation_xml,
+)
 
 
 def _tracks() -> pd.DataFrame:
@@ -96,3 +100,14 @@ def test_cvat_seed_rejects_invalid_boxes() -> None:
             metadata=VideoMetadata(width=100, height=80, frame_count=5, fps=30.0),
             task_name="development",
         )
+
+
+def test_development_instructions_do_not_leak_heldout_anchors() -> None:
+    instructions = annotation_instructions(
+        "development",
+        "development",
+        VideoMetadata(width=100, height=80, frame_count=5, fps=30.0),
+    )
+
+    assert "optional audit metadata" in instructions
+    assert "held-out review anchors" not in instructions

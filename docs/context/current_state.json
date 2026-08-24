@@ -13,6 +13,7 @@
   },
   "dataset": {
     "local_root": "C:\\Users\\PRATHAMESH\\Documents\\Codex\\2026-08-22\\kn\\work\\compressed-20260823T124814Z-1-001\\compressed",
+    "original_root": "D:\\Flybase",
     "videos": 2,
     "srt_files": 2,
     "telemetry_alignment_status": "requires_full_merged_frame_mapping"
@@ -41,7 +42,10 @@
     }
   },
   "ground_truth": {
-    "status": "missing_corrected_coco_and_mot",
+    "status": "development_seed_awaiting_manual_correction",
+    "development_clip": "C:\\Users\\PRATHAMESH\\Documents\\Codex\\2026-08-22\\kn\\work\\cvat_upload\\level1_v4_dev_3s\\source_video_89f.mp4",
+    "development_frames": 89,
+    "heldout_policy": "keep_unseen_until_development_configuration_is_frozen",
     "precision": null,
     "recall": null,
     "idf1": null,
@@ -67,6 +71,6 @@
   },
   "next_action": {
     "id": "E007",
-    "description": "Correct the 89-frame CVAT seed, export COCO and MOT ground truth, and run the official Level-1 evaluation before further tracker tuning."
+    "description": "Create the 89-frame development task in CVAT, correct every road user and identity, export CVAT/MOT/COCO ground truth, and run the official Level-1 evaluation before further tracker tuning."
   }
 }

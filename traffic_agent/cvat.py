@@ -353,14 +353,13 @@ Clip role: **{clip_role}**
    temporary occlusions instead of ending and recreating the track.
 6. Use: car, LGV, HGV, bus, truck, motorcycle, bicycle, pedestrian. Use `ignore`
    only for genuinely unresolvable or heavily truncated objects.
-7. Correct `review_status` from `unchecked` to `confirmed` or `corrected`.
+7. Use `review_status` as optional audit metadata. It does not replace reviewing
+   every object and frame.
 8. Recheck all in-frame track starts/ends and every overlap/crossing event.
 9. Export both **CVAT for video 1.1** and **MOT 1.1** after review.
 10. Keep this package separate from the corrected export so predictions can never
     be mistaken for verified labels.
 
-Known held-out review anchors: inspect candidate handoffs 85->108 and 141->164.
-Candidate 128->142 is a proxy false alarm involving different physical objects.
 """
 
 

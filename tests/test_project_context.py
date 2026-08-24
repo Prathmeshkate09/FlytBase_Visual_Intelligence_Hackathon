@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,8 @@ def test_project_context_is_complete_and_unverified() -> None:
     state = context_status.load_and_validate_state(REPO_ROOT)
 
     assert state["levels"]["1"]["status"] == "candidate_needs_ground_truth"
-    assert state["ground_truth"]["status"] == "missing_corrected_coco_and_mot"
+    assert state["ground_truth"]["status"] == "development_seed_awaiting_manual_correction"
+    assert state["ground_truth"]["development_frames"] == 89
     assert state["next_action"]["id"] == "E007"
 
 
@@ -41,3 +43,26 @@ def test_registered_local_dataset_assets_exist() -> None:
     state = context_status.load_and_validate_state(REPO_ROOT)
 
     assert context_status.check_local_assets(state) == []
+
+
+def test_cvat_label_schema_matches_level_1_taxonomy() -> None:
+    labels = json.loads(
+        (REPO_ROOT / "config/cvat_labels_level1.json").read_text(encoding="utf-8")
+    )
+
+    assert [label["name"] for label in labels] == [
+        "car",
+        "lgv",
+        "hgv",
+        "bus",
+        "truck",
+        "motorcycle",
+        "bicycle",
+        "pedestrian",
+        "ignore",
+    ]
+    assert all(
+        {attribute["name"] for attribute in label["attributes"]}
+        == {"v4_track_id", "seed_state", "review_status"}
+        for label in labels
+    )

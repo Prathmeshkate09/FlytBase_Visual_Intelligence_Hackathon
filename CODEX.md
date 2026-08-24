@@ -112,10 +112,12 @@ Create and correct a small but complete labelled evaluation set before more trac
 
 At the end of every material experiment or architecture change:
 
-1. append one experiment entry;
-2. add or supersede a decision when the conclusion changes;
-3. update `current_state.json` and this compact summary;
-4. run `python tools/context_status.py` and tests;
-5. commit source and context together.
+1. append a concise entry to `docs/context/work_log.md` describing the action,
+   evidence, engineering rationale, result, limitations, and next step;
+2. append one experiment entry when a material experiment ran;
+3. add or supersede a decision when the conclusion changes;
+4. update `current_state.json` and this compact summary when the project state changes;
+5. run `python tools/context_status.py` and tests;
+6. commit source and context together.
 
 Never erase rejected experiments. Mark them superseded and explain why.

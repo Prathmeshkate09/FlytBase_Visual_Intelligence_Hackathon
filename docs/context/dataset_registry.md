@@ -10,6 +10,20 @@ C:\Users\PRATHAMESH\Documents\Codex\2026-08-22\kn\work\compressed-20260823T12481
 
 This directory is outside the Git repository and must remain untracked.
 
+The original, high-bitrate source videos are stored separately at:
+
+```text
+D:\Flybase
+```
+
+| Original asset | Bytes | Resolution | FPS | Frames | Duration |
+|---|---:|---:|---:|---:|---:|
+| `Intersection_Merged.MP4` | 6,495,679,393 | 3840 x 2160 | 29.97003 | 11,971 | 399.432 s |
+| `Multi_Road_Merged.MP4` | 4,959,342,247 | 3840 x 2160 | 29.97003 | 9,140 | 304.971 s |
+
+These files are local source archives. Do not upload them wholesale to CVAT;
+extract versioned clips with recorded frame ranges and hashes.
+
 ## Media assets
 
 | Asset | Bytes | Resolution | FPS | Frames / entries | Duration |
@@ -63,6 +77,31 @@ The final split must be stored with frame ranges and hashes. Until corrected ann
 - robustness test: longer unseen intervals from both intersection and multi-road videos.
 
 Do not train or tune on the held-out interval. Do not call unlabelled video “test data”; it is only an unlabelled robustness review.
+
+## Registered CVAT development pilot
+
+```text
+C:\Users\PRATHAMESH\Documents\Codex\2026-08-22\kn\work\cvat_upload\level1_v4_dev_3s
+```
+
+- video: `source_video_89f.mp4`
+- dimensions: 3840 x 2160
+- frames: 89 (0-88)
+- duration: approximately 2.97 seconds
+- bytes: 48,862,056
+- SHA-256: `c8ead5bc7f3fd82dfd3dfe345061996f8822e9a8bea2048b16b58d7b7edbeda1`
+- seed annotation: `annotations.xml`
+- status: model seed requiring complete manual correction
+- role: development only
+
+Decoded frames 0, 1, 44, and 88 were compared with the same frames of
+`D:\Flybase\Intersection_Merged.MP4`; sampled pixel arrays matched exactly
+(mean absolute error 0.0). This provides evidence that the annotation pilot
+preserves original visual content at the sampled indices. It is not a claim
+that the seed boxes are correct.
+
+The separate `level1_v4_heldout_3s` package must remain unopened for tuning
+until the development workflow and evaluation tooling are frozen.
 
 ## Missing dataset assets
 
