@@ -66,3 +66,12 @@ def test_cvat_label_schema_matches_level_1_taxonomy() -> None:
         == {"v4_track_id", "seed_state", "review_status"}
         for label in labels
     )
+    assert all(
+        next(
+            attribute
+            for attribute in label["attributes"]
+            if attribute["name"] == "v4_track_id"
+        )["values"]
+        == [""]
+        for label in labels
+    )

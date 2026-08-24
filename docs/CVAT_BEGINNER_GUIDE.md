@@ -36,6 +36,9 @@ clip. Use `annotations.xml`, not the convenience ZIP, for the initial import.
 5. In **Labels**, open the **Raw** tab.
 6. Open `config/cvat_labels_level1.json`, copy the complete JSON array, paste it
    into the Raw editor, and select **Done**.
+
+   The text attribute deliberately uses `"values": [""]`. CVAT Online's Raw
+   editor rejects an empty `values` array even though `v4_track_id` is free text.
 7. Select **My computer** and upload `source_video_89f.mp4` from the path above.
 8. Open **Advanced configuration** and use:
 
@@ -198,6 +201,8 @@ detector/tracker evaluation, and separate remaining failures by pipeline layer.
   the exact CVAT error and keep the task ID.
 - If labels do not match, compare the Raw label schema with
   `config/cvat_labels_level1.json`.
+- If CVAT reports `attribute values must be a non-empty array`, make sure every
+  `v4_track_id` definition contains `"values": [""]`, not `"values": []`.
 - If the video has any frame count other than 89, stop and recreate the task.
 - If browser playback is slow, reduce the visible canvas zoom or close other
   heavy tabs; do not lower task image quality after annotation begins.

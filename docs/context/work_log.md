@@ -66,3 +66,22 @@ reviewable reasons that another engineer can verify.
   a clean full-suite result in this shell.
 - Next: receive corrected CVAT for video, MOT, and COCO exports; validate them;
   then run experiment E007 before changing the detector or tracker again.
+
+## 2026-08-24 - Correct CVAT Online Raw-label validation failure
+
+- Request: resolve the CVAT task-creation error shown in the project owner's
+  screenshot: `v4_track_id: attribute values must be a non-empty array`.
+- Actions and evidence: inspected the exact failing Raw JSON and current CVAT
+  attribute serializer behavior. The schema defined the free-text
+  `v4_track_id` attribute with `"values": []`; CVAT Online rejected it before
+  the task could be saved. Updated all nine label definitions to use the
+  non-empty placeholder `"values": [""]`, and added a regression assertion.
+- Engineering rationale: retain `v4_track_id` because the imported seed XML uses
+  it to map model IDs during failure analysis. A single blank placeholder meets
+  the Raw editor's array requirement without restricting free-text track IDs.
+- Result: the corrected JSON can be pasted into the still-open task dialog.
+- Limitations: local JSON and regression validation cannot submit the form in the
+  user's authenticated CVAT Online session. The user must confirm that the Save
+  button becomes available.
+- Next: paste the corrected complete JSON, save the labels, then upload the
+  89-frame development video.
