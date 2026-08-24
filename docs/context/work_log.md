@@ -141,3 +141,20 @@ reviewable reasons that another engineer can verify.
   CVAT's automated QA mode before the labels are treated as final ground truth.
 - Next: process the task, confirm frame 88 exists, and import `annotations.xml`
   into the regular task before any manual edits.
+
+## 2026-08-24 - Confirm the CVAT development task
+
+- Request: verify the newly created CVAT task from its task-details screenshot.
+- Actions and evidence: confirmed task `2540401`, regular annotation job
+  `4400803`, all nine required labels, frame count 89 at 100%, and frame range
+  0-88. The job is in annotation stage and new state.
+- Engineering rationale: frame count and range must be confirmed before seed
+  import; otherwise annotation identities and boxes could be shifted onto the
+  wrong frames and produce invalid evaluation ground truth.
+- Result: the media task is structurally correct and ready for seed annotation
+  import.
+- Limitations: the screenshot does not yet show imported boxes or prove that the
+  XML importer accepts the schema.
+- Next: open job `4400803`, choose Menu -> Upload annotations, select CVAT for
+  video 1.1, and upload the development package's `annotations.xml` before any
+  manual edits.

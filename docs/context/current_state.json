@@ -42,9 +42,12 @@
     }
   },
   "ground_truth": {
-    "status": "development_seed_awaiting_manual_correction",
+    "status": "cvat_development_task_awaiting_seed_import",
     "development_clip": "C:\\Users\\PRATHAMESH\\Documents\\Codex\\2026-08-22\\kn\\work\\cvat_upload\\level1_v4_dev_3s\\source_video_89f.mp4",
     "development_frames": 89,
+    "cvat_task_id": 2540401,
+    "cvat_job_id": 4400803,
+    "cvat_frame_range": "0-88",
     "heldout_policy": "keep_unseen_until_development_configuration_is_frozen",
     "precision": null,
     "recall": null,
