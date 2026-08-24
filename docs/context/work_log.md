@@ -158,3 +158,21 @@ reviewable reasons that another engineer can verify.
 - Next: open job `4400803`, choose Menu -> Upload annotations, select CVAT for
   video 1.1, and upload the development package's `annotations.xml` before any
   manual edits.
+
+## 2026-08-24 - Review the CVAT seed import dialog
+
+- Request: verify the annotation-import settings for job `4400803`.
+- Actions and evidence: inspected the import dialog showing format CVAT 1.1,
+  `annotations.xml` selected, default settings enabled, and import mode Replace.
+  Convert masks to polygons was enabled even though the seed contains rectangle
+  tracks and no masks.
+- Engineering rationale: Replace is safe because this is a new empty job and
+  prevents accidental duplication. CVAT 1.1 matches the seed XML schema. Mask
+  conversion has no role in a bounding-box tracking task and is disabled to
+  keep import behavior minimal and explicit.
+- Result: keep CVAT 1.1, default settings, and Replace; turn Convert masks to
+  polygons off; then confirm the import.
+- Limitations: successful import and track/frame alignment are not proven until
+  CVAT finishes processing and rendered seed boxes are inspected.
+- Next: click OK, wait for completion, and inspect frame 0 and frame 88 before
+  beginning manual corrections.
