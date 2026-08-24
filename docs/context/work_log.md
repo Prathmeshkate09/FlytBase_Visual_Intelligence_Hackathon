@@ -231,3 +231,29 @@ reviewable reasons that another engineer can verify.
 - Next: save the imported job and begin Pass A at frame 0 by reviewing and
   removing only visually proven false tracks, while preserving ambiguous tracks
   for closer inspection.
+
+## 2026-08-24 - Verify CVAT frame resolution after quality concern
+
+- Request: determine whether the development job is actually using 4K imagery
+  because the annotation view appears soft.
+- Actions and evidence: inspected authenticated CVAT job `4400803` read-only in
+  the browser. Its active source-frame canvas reports width `3840` and height
+  `2160`, confirming that the current job is decoding a 4K frame. The job is
+  displayed fit-to-workspace on a substantially smaller screen area. The task
+  creation screenshot previously showed Image quality `70`; no post-creation
+  evidence currently proves that value was changed to `100`.
+- Engineering rationale: source resolution, browser display scale, and CVAT's
+  annotation-image compression are separate variables. A 3840x2160 frame fitted
+  into the browser can look soft even though the stored geometry remains 4K;
+  quality 70 can additionally obscure tiny pedestrians and bicycles.
+- Result: source-frame resolution is verified as 3840x2160. Do not treat the
+  fit-to-screen view as a resolution failure. Use region zoom/fullscreen for
+  inspection. Because image quality 100 is not verified, do not begin the
+  expensive manual correction pass until the task-compression decision is made.
+- Limitations: the current CVAT UI inspection proves canvas dimensions but does
+  not expose the immutable task-creation Image quality value. The only captured
+  creation value is 70.
+- Next: compare a deeply zoomed tiny road user in this job against the local 4K
+  frame. If compression impairs object boundaries, recreate the empty/manual-
+  work-free task with Image quality 100, Prefer zip chunks off, chunk size 4,
+  frames 0-88, and frame step 1, then re-import the preserved seed XML.
