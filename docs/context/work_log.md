@@ -85,3 +85,19 @@ reviewable reasons that another engineer can verify.
   button becomes available.
 - Next: paste the corrected complete JSON, save the labels, then upload the
   89-frame development video.
+
+## 2026-08-24 - Declare the CVAT Raw label type explicitly
+
+- Request: resolve the next task-creation error shown in the project owner's
+  screenshot: `Label "car": unknown label type "undefined"`.
+- Actions and evidence: traced the error to the Raw schema omitting the `type`
+  property. Added `"type": "any"` to all nine labels, matching the label type
+  already embedded in the CVAT 1.1 seed XML, and added a regression assertion.
+- Engineering rationale: `any` preserves compatibility with rectangle tracks
+  imported from the existing seed and avoids changing the annotation semantics
+  while satisfying CVAT Online's explicit type validation.
+- Result: the corrected complete JSON is ready to replace the Raw editor text.
+- Limitations: final acceptance still requires clicking Save in the user's
+  authenticated CVAT session.
+- Next: replace the complete Raw JSON, click Save, and report either the enabled
+  file upload section or the exact next validation message.

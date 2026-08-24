@@ -61,6 +61,7 @@ def test_cvat_label_schema_matches_level_1_taxonomy() -> None:
         "pedestrian",
         "ignore",
     ]
+    assert all(label["type"] == "any" for label in labels)
     assert all(
         {attribute["name"] for attribute in label["attributes"]}
         == {"v4_track_id", "seed_state", "review_status"}

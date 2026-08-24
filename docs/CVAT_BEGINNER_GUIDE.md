@@ -39,6 +39,8 @@ clip. Use `annotations.xml`, not the convenience ZIP, for the initial import.
 
    The text attribute deliberately uses `"values": [""]`. CVAT Online's Raw
    editor rejects an empty `values` array even though `v4_track_id` is free text.
+   Every label also declares `"type": "any"`; without an explicit type, CVAT
+   Online rejects the label as `unknown label type "undefined"`.
 7. Select **My computer** and upload `source_video_89f.mp4` from the path above.
 8. Open **Advanced configuration** and use:
 
@@ -203,6 +205,8 @@ detector/tracker evaluation, and separate remaining failures by pipeline layer.
   `config/cvat_labels_level1.json`.
 - If CVAT reports `attribute values must be a non-empty array`, make sure every
   `v4_track_id` definition contains `"values": [""]`, not `"values": []`.
+- If CVAT reports `unknown label type "undefined"`, make sure every label
+  includes `"type": "any"`.
 - If the video has any frame count other than 89, stop and recreate the task.
 - If browser playback is slow, reduce the visible canvas zoom or close other
   heavy tabs; do not lower task image quality after annotation begins.

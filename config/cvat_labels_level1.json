@@ -2,6 +2,7 @@
   {
     "name": "car",
     "color": "#33B5E5",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -11,6 +12,7 @@
   {
     "name": "lgv",
     "color": "#2ECC71",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -20,6 +22,7 @@
   {
     "name": "hgv",
     "color": "#8E44AD",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -29,6 +32,7 @@
   {
     "name": "bus",
     "color": "#F39C12",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -38,6 +42,7 @@
   {
     "name": "truck",
     "color": "#27AE60",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -47,6 +52,7 @@
   {
     "name": "motorcycle",
     "color": "#F1C40F",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -56,6 +62,7 @@
   {
     "name": "bicycle",
     "color": "#E67E22",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -65,6 +72,7 @@
   {
     "name": "pedestrian",
     "color": "#E91E63",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
@@ -74,6 +82,7 @@
   {
     "name": "ignore",
     "color": "#9E9E9E",
+    "type": "any",
     "attributes": [
       {"name": "v4_track_id", "input_type": "text", "mutable": false, "default_value": "", "values": [""]},
       {"name": "seed_state", "input_type": "select", "mutable": true, "default_value": "observed", "values": ["observed", "kalman_prediction"]},
