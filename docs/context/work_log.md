@@ -176,3 +176,20 @@ reviewable reasons that another engineer can verify.
   CVAT finishes processing and rendered seed boxes are inspected.
 - Next: click OK, wait for completion, and inspect frame 0 and frame 88 before
   beginning manual corrections.
+
+## 2026-08-24 - Confirm replacement of the empty CVAT job
+
+- Request: review CVAT's final `Replace existing annotations?` confirmation for
+  job `4400803`.
+- Actions and evidence: confirmed this is the expected second-stage warning from
+  Replace import mode and that no manual correction work has begun in the new
+  job.
+- Engineering rationale: replacing an empty job with the preserved seed XML is
+  deterministic and avoids duplicate tracks. Replacement would become unsafe
+  after manual corrections, so this approval applies only to this initial
+  import.
+- Result: approve `Replace annotations` and wait for processing to complete.
+- Limitations: the imported annotations still require visual frame-alignment and
+  box/identity checks.
+- Next: inspect the rendered tracks at frames 0 and 88, then mark the seed import
+  state in the project context.
