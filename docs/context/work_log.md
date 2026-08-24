@@ -121,3 +121,23 @@ reviewable reasons that another engineer can verify.
   final task must still be checked for frame range 0-88 after creation.
 - Next: apply the two changes, create the task, and confirm that the annotation
   job can navigate to frame 88 before importing the seed XML.
+
+## 2026-08-24 - Choose CVAT validation mode for the pilot
+
+- Request: review the final CVAT task-creation section showing Local source and
+  target storage plus None, Ground Truth, and Honeypots validation modes.
+- Actions and evidence: checked the current official CVAT quality-control
+  documentation. CVAT's Ground Truth mode creates a separate validation job and
+  compares regular annotation jobs against it; its annotations remain separate
+  from ordinary task annotations. Honeypots are not suitable for ordered video
+  tracks.
+- Engineering rationale: this pilot needs one complete, manually corrected
+  89-frame tracking job that can receive the seed XML and be exported directly
+  as CVAT, MOT, and COCO. CVAT's optional internal annotator-QA subsystem adds a
+  different job topology without improving this single-owner correction pass.
+- Result: keep source storage Local, target storage Local, and validation mode
+  None; then use Submit & Open.
+- Limitations: independent annotation quality review is still required outside
+  CVAT's automated QA mode before the labels are treated as final ground truth.
+- Next: process the task, confirm frame 88 exists, and import `annotations.xml`
+  into the regular task before any manual edits.
