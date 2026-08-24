@@ -101,3 +101,23 @@ reviewable reasons that another engineer can verify.
   authenticated CVAT session.
 - Next: replace the complete Raw JSON, click Save, and report either the enabled
   file upload section or the exact next validation message.
+
+## 2026-08-24 - Review CVAT video task settings
+
+- Request: verify the CVAT advanced settings and explain why the uploaded clip
+  is displayed as two seconds.
+- Actions and evidence: inspected the task-creation screenshot. Start frame 0,
+  stop frame 88, frame step 1, segment size 89, overlap 0, chunk size 4,
+  consensus replicas 0, and cache enabled were configured correctly. Image
+  quality remained 70 and Prefer zip chunks remained enabled.
+- Engineering rationale: 89 frames at 29.97003 FPS represent approximately
+  2.97 seconds, so a whole-second UI display can show `2 sec` without frames
+  being missing. Image quality 100 is retained for this 4K ground-truth task to
+  reduce loss of detail on tiny pedestrians and bicycles. Native video chunks
+  are preferred over ZIP chunks for video annotation.
+- Result: two changes are required before task submission: set image quality to
+  100 and turn Prefer zip chunks off. The frame range itself is correct.
+- Limitations: the screenshot is the creation form, not the processed task. The
+  final task must still be checked for frame range 0-88 after creation.
+- Next: apply the two changes, create the task, and confirm that the annotation
+  job can navigate to frame 88 before importing the seed XML.
