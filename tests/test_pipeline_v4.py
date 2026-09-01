@@ -50,6 +50,29 @@ def test_pipeline_config_rejects_missing_inputs(tmp_path: Path) -> None:
         config.validate()
 
 
+def test_pipeline_config_rejects_ambiguous_candidate_and_legacy_caches(
+    tmp_path: Path,
+) -> None:
+    video = tmp_path / "input.mp4"
+    detector = tmp_path / "detector.json"
+    tracker = tmp_path / "tracker.yaml"
+    candidates = tmp_path / "candidate_detections.csv"
+    detections = tmp_path / "detections.csv"
+    for path in (video, detector, tracker, candidates, detections):
+        path.write_text("placeholder", encoding="utf-8")
+    config = PipelineV4Config(
+        input_video=video,
+        output_dir=tmp_path / "output",
+        detection_config=detector,
+        tracker_config=tracker,
+        cached_candidates=candidates,
+        cached_detections=detections,
+    )
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        config.validate()
+
+
 def test_cached_detection_loader_and_class_threshold_filter(tmp_path: Path) -> None:
     path = tmp_path / "detections.csv"
     path.write_text(

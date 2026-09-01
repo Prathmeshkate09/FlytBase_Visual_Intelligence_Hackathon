@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.5
+#       jupytext_version: 1.19.1
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -40,23 +40,33 @@
 # `RUN_TRAINING` false until the preceding smoke tests pass.
 
 # %%
+import hashlib
 from pathlib import Path
 
 GITHUB_REPOSITORY = "https://github.com/Prathmeshkate09/FlytBase_Visual_Intelligence_Hackathon.git"
 GITHUB_BRANCH = "level1-v4"
 
-# The notebook searches every attached Kaggle input recursively.
-VIDEO_FILENAME_HINT = "source_video_89f.mp4"
+# Select the corrected development clip by both an unambiguous filename and
+# its registered digest. The development and held-out clips both used the
+# generic name ``source_video_89f.mp4`` historically.
+VIDEO_FILENAME_HINT = "source_video_89f_dev_c8ead5.mp4"
+VIDEO_SHA256 = "c8ead5bc7f3fd82dfd3dfe345061996f8822e9a8bea2048b16b58d7b7edbeda1"
 
-# Aerial-domain detector experiment. Start full-frame at high resolution;
-# retain SAHI only if a later controlled comparison improves verified recall.
-DETECTOR_MODE = "aerial_yolov9e_full_frame"
+# Compare every detector on the same corrected development clip. Each run first
+# executes a one-frame CUDA/memory probe and then the full 89-frame segment.
+DETECTOR_EXPERIMENTS = {
+    "yolov9e_full_1920": {"image_size": 1920, "use_sahi": False},
+    "yolov9e_full_2560": {"image_size": 2560, "use_sahi": False},
+    "yolov9e_sahi_1280": {"image_size": 1920, "use_sahi": True},
+}
 MODEL_REPOSITORY = "dronefreak/visdrone-yolov9e"
 MODEL_FILENAME = "best.pt"
 MODEL_REVISION = "4593a8ea82676f41c46a7cf3e89e39984ac7a2af"
 
 SMOKE_SECONDS = 3
 FULL_RUN_SECONDS = 15
+RUN_DETECTOR_COMPARISON = True
+RUN_TRACKER_SWEEP = True
 RUN_FULL_INFERENCE = False
 EXTRACT_ANNOTATION_FRAMES = False
 
@@ -177,8 +187,19 @@ if len(matches) != 1:
     )
 
 VIDEO_SOURCE = matches[0]
+video_digest = hashlib.sha256()
+with VIDEO_SOURCE.open("rb") as video_stream:
+    for chunk in iter(lambda: video_stream.read(1024 * 1024), b""):
+        video_digest.update(chunk)
+actual_video_sha256 = video_digest.hexdigest()
+if actual_video_sha256 != VIDEO_SHA256:
+    raise RuntimeError(
+        f"Video SHA256 mismatch for {VIDEO_SOURCE}: "
+        f"expected {VIDEO_SHA256}, found {actual_video_sha256}"
+    )
 VIDEO_PATH = DATA_DIR / VIDEO_SOURCE.name
 print("Selected:", VIDEO_SOURCE)
+print("Video SHA256:", actual_video_sha256)
 
 # %% [markdown]
 # ## 4. Pull the current implementation directly from GitHub
@@ -284,100 +305,183 @@ print(
 
 # %%
 subprocess.run(
-    [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+    [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--deselect",
+        "tests/test_project_context.py::test_registered_local_dataset_assets_exist",
+    ],
     cwd=REPO_DIR,
     check=True,
 )
 
 # %% [markdown]
-# ## 8. Build an explicit detector experiment configuration
-#
-# The current generic detector is only a baseline. `full_frame` disables SAHI;
-# `sahi` enables sliced inference and class-agnostic merging so cross-class tile
-# duplicates can be consolidated before tracking.
+# ## 8. Build hashable detector experiment configurations
 
 # %%
 import json
 
-detector_config = {
+base_detector_config = {
     "model_path": str(MODEL_NAME_OR_PATH),
     "device": "0",
     "confidence": 0.05,
     "iou": 0.50,
     "class_ids": [0, 1, 2, 3, 4, 5, 8, 9],
-    "image_size": 1920,
-    "use_sahi": DETECTOR_MODE == "aerial_sahi",
     "slice_height": 1280,
     "slice_width": 1280,
     "overlap_height_ratio": 0.20,
     "overlap_width_ratio": 0.20,
     "batch_size": 1,
-    "perform_standard_prediction": DETECTOR_MODE == "aerial_sahi",
     "postprocess_type": "GREEDYNMM",
     "postprocess_match_metric": "IOS",
     "postprocess_match_threshold": 0.50,
     "postprocess_class_agnostic": False,
     "class_name_map": {
-        "pedestrian": "pedestrian",
-        "people": "pedestrian",
-        "bicycle": "bicycle",
-        "car": "car",
-        "van": "lgv",
-        "truck": "truck",
-        "bus": "bus",
-        "motor": "motorcycle",
+        "pedestrian": "pedestrian", "people": "pedestrian",
+        "bicycle": "bicycle", "car": "car", "van": "lgv",
+        "truck": "truck", "bus": "bus", "motor": "motorcycle",
     },
     "class_confidence_thresholds": {
-        "pedestrian": 0.15,
-        "bicycle": 0.15,
-        "car": 0.12,
-        "lgv": 0.12,
-        "truck": 0.12,
-        "bus": 0.12,
-        "motorcycle": 0.05,
+        "pedestrian": 0.15, "bicycle": 0.15, "car": 0.12,
+        "lgv": 0.12, "truck": 0.12, "bus": 0.12, "motorcycle": 0.05,
     },
 }
 
-DETECTION_CONFIG = CONFIG_DIR / f"detection_{DETECTOR_MODE}.json"
-DETECTION_CONFIG.write_text(json.dumps(detector_config, indent=2), encoding="utf-8")
-print(DETECTION_CONFIG.read_text(encoding="utf-8"))
+DETECTION_CONFIGS = {}
+for experiment_name, overrides in DETECTOR_EXPERIMENTS.items():
+    detector_config = {
+        **base_detector_config,
+        **overrides,
+        "perform_standard_prediction": bool(overrides["use_sahi"]),
+    }
+    config_path = CONFIG_DIR / f"detection_{experiment_name}.json"
+    config_path.write_text(json.dumps(detector_config, indent=2), encoding="utf-8")
+    DETECTION_CONFIGS[experiment_name] = config_path
+print({name: str(path) for name, path in DETECTION_CONFIGS.items()})
 
 # %% [markdown]
-# ## 9. One-second integration smoke test
-
-# This validates video decoding, detector CUDA inference, tracker integration
-# and file output before a long run.
+# ## 9. One-frame probes and controlled 89-frame comparison
 
 # %%
-SMOKE_OUTPUT = RUNS_DIR / f"smoke_{DETECTOR_MODE}"
+mot_matches = list(INPUT_ROOT.rglob("FlytBase_L1_dev89_corrected_MOT.zip"))
+if len(mot_matches) != 1:
+    raise RuntimeError(f"Expected one corrected development MOT archive, found {mot_matches}")
+MOT_GROUND_TRUTH = mot_matches[0]
 
-command = [
-    sys.executable,
-    str(REPO_DIR / "run_v4.py"),
-    "--input",
-    str(VIDEO_PATH),
-    "--output",
-    str(SMOKE_OUTPUT),
-    "--detection-config",
-    str(DETECTION_CONFIG),
-    "--tracker-config",
-    str(REPO_DIR / "config" / "botsort_drone_v4.yaml"),
-    "--road-user-roi",
-    str(REPO_DIR / "config" / "road_user_roi_intersection_v4.json"),
-    "--max-prediction-frames",
-    "2",
-    "--confirmation-observations",
-    "5",
-    "--max-seconds",
-    str(SMOKE_SECONDS),
-]
-subprocess.run(command, cwd=REPO_DIR, check=True)
+comparison_reports = {}
+comparison_outputs = {}
+if RUN_DETECTOR_COMPARISON:
+    for experiment_name, detection_config_path in DETECTION_CONFIGS.items():
+        probe_output = RUNS_DIR / f"probe_{experiment_name}"
+        run_output = RUNS_DIR / f"dev89_{experiment_name}"
+        common_command = [
+            sys.executable, str(REPO_DIR / "run_v4.py"),
+            "--input", str(VIDEO_PATH),
+            "--detection-config", str(detection_config_path),
+            "--tracker-config", str(REPO_DIR / "config" / "botsort_drone_v4.yaml"),
+            "--road-user-roi", str(REPO_DIR / "config" / "road_user_roi_intersection_v4.json"),
+            "--max-prediction-frames", "2",
+            "--confirmation-observations", "5",
+        ]
+        subprocess.run(
+            [*common_command, "--output", str(probe_output), "--max-seconds", str(1.0 / fps + 0.001)],
+            cwd=REPO_DIR,
+            check=True,
+        )
+        subprocess.run(
+            [*common_command, "--output", str(run_output), "--max-seconds", str(SMOKE_SECONDS)],
+            cwd=REPO_DIR,
+            check=True,
+        )
+        raw_report_path = run_output / "quality_report_candidates.json"
+        subprocess.run(
+            [
+                sys.executable, str(REPO_DIR / "evaluate_detection_cache.py"),
+                "--mot-ground-truth", str(MOT_GROUND_TRUTH),
+                "--detections", str(run_output / "candidate_detections.csv"),
+                "--output", str(raw_report_path),
+            ],
+            cwd=REPO_DIR,
+            check=True,
+        )
+        gt_report_path = run_output / "quality_report_ground_truth.json"
+        diagnostics_path = run_output / "error_diagnostics.json"
+        subprocess.run(
+            [
+                sys.executable, str(REPO_DIR / "evaluate_v4.py"),
+                "--mot-ground-truth", str(MOT_GROUND_TRUTH),
+                "--tracks", str(run_output / "tracks.csv"),
+                "--track-summary", str(run_output / "track_summary.csv"),
+                "--run-manifest", str(run_output / "run_manifest.json"),
+                "--output", str(gt_report_path),
+                "--diagnostics-output", str(diagnostics_path),
+            ],
+            cwd=REPO_DIR,
+            check=True,
+        )
+        comparison_reports[experiment_name] = json.loads(gt_report_path.read_text(encoding="utf-8"))
+        comparison_outputs[experiment_name] = run_output
 
-report = json.loads((SMOKE_OUTPUT / "quality_report.json").read_text(encoding="utf-8"))
-print(json.dumps(report, indent=2))
+    def ranking(item):
+        metrics = item[1]["ground_truth_metrics"]
+        return (metrics["hota"], metrics["idf1"], -metrics["id_switches"], -metrics["fragmentations"])
+
+    WINNER_NAME, WINNER_REPORT = max(comparison_reports.items(), key=ranking)
+    SMOKE_OUTPUT = comparison_outputs[WINNER_NAME]
+    DETECTION_CONFIG = DETECTION_CONFIGS[WINNER_NAME]
+    print("Development comparison winner:", WINNER_NAME)
+    print(json.dumps(WINNER_REPORT, indent=2))
+else:
+    raise RuntimeError("RUN_DETECTOR_COMPARISON must remain enabled for an auditable optimization run")
+
+WINNER_TRACKER_CONFIG = REPO_DIR / "config" / "botsort_drone_v4.yaml"
+WINNER_ROI = REPO_DIR / "config" / "road_user_roi_intersection_v4.json"
+WINNER_CONFIRMATION = 5
+WINNER_PREDICTION_FRAMES = 2
+WINNER_STITCHING = True
+if RUN_TRACKER_SWEEP:
+    tuning_output = WORK_ROOT / "tuning" / WINNER_NAME
+    subprocess.run(
+        [
+            sys.executable, str(REPO_DIR / "tune_v4.py"),
+            "--input", str(VIDEO_PATH),
+            "--expected-video-sha256", VIDEO_SHA256,
+            "--candidate-detections", str(SMOKE_OUTPUT / "candidate_detections.csv"),
+            "--mot-ground-truth", str(MOT_GROUND_TRUTH),
+            "--detection-config", str(DETECTION_CONFIG),
+            "--tracker-config", str(REPO_DIR / "config" / "botsort_drone_v4.yaml"),
+            "--road-user-roi", str(REPO_DIR / "config" / "road_user_roi_intersection_v4.json"),
+            "--output", str(tuning_output),
+            "--max-seconds", str(SMOKE_SECONDS),
+        ],
+        cwd=REPO_DIR,
+        check=True,
+    )
+    tuning_summary = json.loads(
+        (tuning_output / "tuning_summary.json").read_text(encoding="utf-8")
+    )
+    WINNER_NAME = f"{WINNER_NAME}_{tuning_summary['winner']}"
+    WINNER_REPORT = tuning_summary["winner_report"]
+    SMOKE_OUTPUT = tuning_output / "runs" / tuning_summary["winner"]
+    DETECTION_CONFIG = Path(tuning_summary["winner_spec"]["detection_config"])
+    WINNER_TRACKER_CONFIG = Path(tuning_summary["winner_spec"]["tracker_config"])
+    WINNER_ROI = (
+        Path(tuning_summary["winner_spec"]["roi"])
+        if tuning_summary["winner_spec"]["roi"]
+        else None
+    )
+    WINNER_CONFIRMATION = int(tuning_summary["winner_spec"]["confirmation_observations"])
+    WINNER_PREDICTION_FRAMES = int(tuning_summary["winner_spec"]["max_prediction_frames"])
+    WINNER_STITCHING = bool(tuning_summary["winner_spec"]["enable_offline_stitching"])
+    print("Tuned development winner:", WINNER_NAME)
+    print(json.dumps(WINNER_REPORT, indent=2))
 
 # %% [markdown]
-# ## 10. Render and inspect the smoke-test evidence
+# ## 10. Render the best development candidate
 #
 # Predicted boxes are visually different from observed detections. A visually
 # clean video is not accepted as proof of tracking quality; it is only a review
@@ -415,19 +519,29 @@ display(Video(str(SMOKE_VIDEO), embed=True, width=1000))
 print(SMOKE_RENDER_REPORT.read_text(encoding="utf-8"))
 
 # %% [markdown]
-# ## 11. Optional 15-second inference
+# ## 11. Optional 15-second inference with the selected configuration
 #
 # Set `RUN_FULL_INFERENCE = True` in Cell 1 only after the smoke video and
 # counts are plausible. This remains an experiment until corrected MOT ground
 # truth is evaluated.
 
 # %%
-FULL_OUTPUT = RUNS_DIR / f"level1_15s_{DETECTOR_MODE}"
+FULL_OUTPUT = RUNS_DIR / f"level1_15s_{WINNER_NAME}"
 
 if RUN_FULL_INFERENCE:
-    full_command = command.copy()
-    full_command[full_command.index(str(SMOKE_OUTPUT))] = str(FULL_OUTPUT)
-    full_command[full_command.index(str(SMOKE_SECONDS))] = str(FULL_RUN_SECONDS)
+    full_command = [
+        sys.executable, str(REPO_DIR / "run_v4.py"),
+        "--input", str(VIDEO_PATH), "--output", str(FULL_OUTPUT),
+        "--detection-config", str(DETECTION_CONFIG),
+        "--tracker-config", str(WINNER_TRACKER_CONFIG),
+        "--max-prediction-frames", str(WINNER_PREDICTION_FRAMES),
+        "--confirmation-observations", str(WINNER_CONFIRMATION),
+        "--max-seconds", str(FULL_RUN_SECONDS),
+    ]
+    if WINNER_ROI is not None:
+        full_command.extend(["--road-user-roi", str(WINNER_ROI)])
+    if not WINNER_STITCHING:
+        full_command.append("--disable-offline-stitching")
     subprocess.run(full_command, cwd=REPO_DIR, check=True)
     print((FULL_OUTPUT / "quality_report.json").read_text(encoding="utf-8"))
 else:
@@ -497,54 +611,141 @@ else:
     print("Skipped. Enable only in a dedicated training run.")
 
 # %% [markdown]
-# ## 14. Optional scene-specific fine-tuning
+# ## 14. Optional scene-specific fine-tuning from corrected development labels
 #
-# Attach a private labelled dataset containing this structure:
-#
-# ```text
-# images/train/*.jpg
-# images/val/*.jpg
-# labels/train/*.txt
-# labels/val/*.txt
-# data.yaml
-# ```
-#
-# The cell refuses to train if no `data.yaml` exists.
+# The corrected COCO archive is converted from the exact hash-verified video.
+# Frames 0-70 select the epoch on frames 71-88; the selected epoch count is
+# then refit on all 89 development frames. Held-out media is never read here.
 
 # %%
-scene_yamls = [
-    path
-    for path in INPUT_ROOT.rglob("*.yaml")
-    if path.name.lower() in {"data.yaml", "dataset.yaml"}
-]
-print("Candidate scene datasets:", [str(path) for path in scene_yamls])
-
 if RUN_SCENE_FINETUNING:
-    if len(scene_yamls) != 1:
-        raise RuntimeError(
-            "Attach exactly one corrected scene dataset, or edit this cell to select its data.yaml."
-        )
-    starting_weights = VISDRONE_BEST if VISDRONE_BEST.exists() else Path("yolo26s.pt")
-    model = YOLO(str(starting_weights))
-    model.train(
-        data=str(scene_yamls[0]),
-        epochs=80,
-        imgsz=1280,
-        batch=4,
-        device=0,
-        workers=2,
-        cache=False,
-        amp=True,
-        project=str(TRAINING_DIR / "scene"),
-        name="intersection_finetune",
-        exist_ok=True,
+    coco_matches = list(INPUT_ROOT.rglob("FlytBase_L1_dev89_corrected_COCO.zip"))
+    if len(coco_matches) != 1:
+        raise RuntimeError(f"Expected one corrected COCO archive, found {coco_matches}")
+    split_dataset = TRAINING_DIR / "dev89_split"
+    subprocess.run(
+        [
+            sys.executable, str(REPO_DIR / "prepare_yolo_dataset.py"),
+            "--video", str(VIDEO_PATH),
+            "--coco-annotations", str(coco_matches[0]),
+            "--output", str(split_dataset),
+            "--expected-video-sha256", VIDEO_SHA256,
+            "--expected-frames", "89",
+            "--validation-start-frame", "71",
+        ],
+        cwd=REPO_DIR,
+        check=True,
     )
+    selected_run = None
+    for batch_size in (4, 2, 1):
+        try:
+            model = YOLO(str(MODEL_NAME_OR_PATH))
+            selected_run = model.train(
+                data=str(split_dataset / "data.yaml"), epochs=80, patience=15,
+                imgsz=1280, batch=batch_size, device=0, workers=2,
+                cache=False, amp=True, seed=42, deterministic=True,
+                project=str(TRAINING_DIR / "scene"),
+                name=f"intersection_select_b{batch_size}", exist_ok=True,
+            )
+            break
+        except RuntimeError as error:
+            if "out of memory" not in str(error).lower() or batch_size == 1:
+                raise
+            torch.cuda.empty_cache()
+            print(f"CUDA OOM at batch {batch_size}; retrying smaller batch")
+    if selected_run is None:
+        raise RuntimeError("Scene fine-tuning did not produce a result")
+    selection_dir = Path(selected_run.save_dir)
+    results_table = pd.read_csv(selection_dir / "results.csv")
+    map_columns = [name for name in results_table.columns if "mAP50-95" in name]
+    if len(map_columns) != 1:
+        raise RuntimeError(f"Could not identify validation mAP column: {results_table.columns}")
+    best_epoch = int(results_table[map_columns[0]].idxmax()) + 1
+    print("Selected epoch count:", best_epoch)
+
+    refit_dataset = TRAINING_DIR / "dev89_all_train"
+    subprocess.run(
+        [
+            sys.executable, str(REPO_DIR / "prepare_yolo_dataset.py"),
+            "--video", str(VIDEO_PATH),
+            "--coco-annotations", str(coco_matches[0]),
+            "--output", str(refit_dataset),
+            "--expected-video-sha256", VIDEO_SHA256,
+            "--expected-frames", "89", "--all-train",
+        ],
+        cwd=REPO_DIR,
+        check=True,
+    )
+    refit_model = YOLO(str(MODEL_NAME_OR_PATH))
+    refit_run = refit_model.train(
+        data=str(refit_dataset / "data.yaml"), epochs=best_epoch, patience=0,
+        imgsz=1280, batch=1, device=0, workers=2, cache=False, amp=True,
+        seed=42, deterministic=True, project=str(TRAINING_DIR / "scene"),
+        name="intersection_refit_all89", exist_ok=True,
+    )
+    FROZEN_SCENE_WEIGHTS = Path(refit_run.save_dir) / "weights" / "last.pt"
+    if not FROZEN_SCENE_WEIGHTS.exists():
+        raise RuntimeError(f"Missing refit weights: {FROZEN_SCENE_WEIGHTS}")
+    print("Frozen scene weights:", FROZEN_SCENE_WEIGHTS)
 else:
-    print("Skipped. Correct the CVAT labels before enabling scene fine-tuning.")
+    print("Skipped. Enable after the pretrained detector comparison is reviewed.")
 
 # %% [markdown]
-# ## 15. Package outputs for Kaggle versioning/download
+# ## 15. Evaluate and freeze the scene-fine-tuned detector
 
+# %%
+if RUN_SCENE_FINETUNING:
+    fine_tuned_reports = {}
+    for mode_name, use_sahi in (("scene_full_1920", False), ("scene_sahi_1280", True)):
+        fine_config = {
+            **base_detector_config,
+            "model_path": str(FROZEN_SCENE_WEIGHTS),
+            "image_size": 1920,
+            "use_sahi": use_sahi,
+            "perform_standard_prediction": use_sahi,
+        }
+        fine_config_path = CONFIG_DIR / f"detection_{mode_name}.json"
+        fine_config_path.write_text(json.dumps(fine_config, indent=2), encoding="utf-8")
+        fine_output = RUNS_DIR / f"dev89_{mode_name}"
+        subprocess.run(
+            [
+                sys.executable, str(REPO_DIR / "run_v4.py"),
+                "--input", str(VIDEO_PATH), "--output", str(fine_output),
+                "--detection-config", str(fine_config_path),
+                "--tracker-config", str(REPO_DIR / "config" / "botsort_drone_v4.yaml"),
+                "--road-user-roi", str(REPO_DIR / "config" / "road_user_roi_intersection_v4.json"),
+                "--max-prediction-frames", "2", "--confirmation-observations", "5",
+                "--max-seconds", str(SMOKE_SECONDS),
+            ],
+            cwd=REPO_DIR,
+            check=True,
+        )
+        fine_report_path = fine_output / "quality_report_ground_truth.json"
+        subprocess.run(
+            [
+                sys.executable, str(REPO_DIR / "evaluate_v4.py"),
+                "--mot-ground-truth", str(MOT_GROUND_TRUTH),
+                "--tracks", str(fine_output / "tracks.csv"),
+                "--track-summary", str(fine_output / "track_summary.csv"),
+                "--run-manifest", str(fine_output / "run_manifest.json"),
+                "--output", str(fine_report_path),
+                "--diagnostics-output", str(fine_output / "error_diagnostics.json"),
+            ],
+            cwd=REPO_DIR,
+            check=True,
+        )
+        fine_tuned_reports[mode_name] = json.loads(fine_report_path.read_text(encoding="utf-8"))
+        comparison_outputs[mode_name] = fine_output
+    fine_winner_name, fine_winner_report = max(fine_tuned_reports.items(), key=ranking)
+    if ranking((fine_winner_name, fine_winner_report)) > ranking((WINNER_NAME, WINNER_REPORT)):
+        WINNER_NAME, WINNER_REPORT = fine_winner_name, fine_winner_report
+        SMOKE_OUTPUT = comparison_outputs[WINNER_NAME]
+    print("Frozen development winner:", WINNER_NAME)
+    print(json.dumps(WINNER_REPORT, indent=2))
+
+# %% [markdown]
+# ## 16. Package outputs for Kaggle versioning/download
+#
 # `/kaggle/working` is preserved when the notebook is saved as a version.
 
 # %%

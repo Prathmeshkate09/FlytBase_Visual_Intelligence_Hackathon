@@ -108,3 +108,11 @@ Statuses: `accepted`, `provisional`, `rejected`, `deferred`, or `superseded`.
 - Evidence: both SRT files contain two raw frame-count sequences that reset to zero; raw counts also contain gaps, while SRT block counts exactly equal MP4 frame counts.
 - Rejected alternative: joining the full merged video to telemetry using raw `FrameCnt` alone.
 - Consequence: update the telemetry loader before full-video Level-2/4 processing.
+
+## D014 — Detection improvement precedes further tracker selection
+
+- Status: accepted
+- Date: 2026-09-01
+- Evidence: E007 achieved precision 0.6891, recall 0.5589, IDF1 0.6135, and HOTA 0.5547 on corrected development ground truth. Reconsidering all ROI-rejected detections raised raw recall only to 0.6848 while reducing precision to 0.5707.
+- Decision: compare higher-resolution and sliced detector candidates, then fine-tune on development labels if raw precision and recall cannot both approach 0.92. Tune BoT-SORT only after freezing the detector cache.
+- Constraint: the `da399` clip remains held out and may be evaluated only after the development configuration is frozen.

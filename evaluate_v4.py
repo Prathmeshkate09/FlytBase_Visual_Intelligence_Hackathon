@@ -16,6 +16,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--track-summary", required=True, type=Path)
     parser.add_argument("--run-manifest", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--diagnostics-output",
+        type=Path,
+        default=None,
+        help="Optionally write the error diagnostics as a separate JSON artifact.",
+    )
     parser.add_argument("--min-detection-precision", type=float, default=0.90)
     parser.add_argument("--min-detection-recall", type=float, default=0.90)
     parser.add_argument("--min-idf1", type=float, default=0.85)
@@ -32,6 +38,7 @@ def main() -> None:
         summary_path=args.track_summary,
         run_manifest_path=args.run_manifest,
         output_path=args.output,
+        diagnostics_output_path=args.diagnostics_output,
         gates=QualityGates(
             detection_precision=args.min_detection_precision,
             detection_recall=args.min_detection_recall,

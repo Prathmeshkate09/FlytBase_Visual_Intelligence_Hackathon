@@ -151,8 +151,6 @@ class RoadUserDetector:
         for bounds, confidence, class_id in zip(coordinates, confidences, classes):
             raw_class_name = str(result.names[int(class_id)]).lower()
             class_name = self.config.canonical_class_name(raw_class_name)
-            if float(confidence) < self.config.confidence_threshold_for(class_name):
-                continue
             detections.append(
                 Detection(
                     x1=float(bounds[0]),
@@ -201,8 +199,6 @@ class RoadUserDetector:
             raw_class_name = str(prediction.category.name).lower()
             class_name = self.config.canonical_class_name(raw_class_name)
             confidence = float(prediction.score.value)
-            if confidence < self.config.confidence_threshold_for(class_name):
-                continue
             x1, y1, x2, y2 = (float(value) for value in prediction.bbox.to_xyxy())
             detections.append(
                 Detection(

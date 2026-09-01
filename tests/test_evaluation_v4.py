@@ -9,6 +9,8 @@ import pytest
 from traffic_agent.evaluation_v4 import (
     QualityGates,
     _trackeval_numpy_compatibility,
+    detection_error_diagnostics,
+    detection_cache_metrics,
     mode_classification_metrics,
     prepare_predictions,
     prepare_trackeval_sequence,
@@ -82,6 +84,20 @@ def test_trackeval_sequence_is_one_based_and_category_agnostic(tmp_path: Path) -
     assert sequence["similarity_scores"][0][0, 0] == pytest.approx(1.0)
 
 
+def test_prepare_predictions_replaces_per_row_class_with_final_track_class() -> None:
+    tracks = _tracks().assign(class_name="pedestrian")
+
+    predictions = prepare_predictions(
+        tracks,
+        pd.DataFrame([{"track_id": 7, "final_class_name": "truck"}]),
+        frame_count=2,
+    )
+
+    assert predictions["class_name"].tolist() == ["truck", "truck"]
+    assert "class_name_x" not in predictions
+    assert "class_name_y" not in predictions
+
+
 def test_mode_accuracy_uses_matched_boxes(tmp_path: Path) -> None:
     ground_truth = read_cvat_mot_archive(_mot_archive(tmp_path / "truth.zip"))
     predictions = prepare_predictions(
@@ -95,6 +111,53 @@ def test_mode_accuracy_uses_matched_boxes(tmp_path: Path) -> None:
     assert report["matched_boxes"] == 2
     assert report["mode_accuracy"] == 0.0
     assert report["confusion"] == {"car": {"truck": 2}}
+
+
+def test_detection_diagnostics_report_class_grid_and_examples(tmp_path: Path) -> None:
+    ground_truth = read_cvat_mot_archive(_mot_archive(tmp_path / "truth.zip"))
+    predictions = prepare_predictions(
+        _tracks().iloc[[0]].assign(confidence=0.9),
+        pd.DataFrame([{"track_id": 7, "final_class_name": "car"}]),
+        frame_count=2,
+    )
+
+    report = detection_error_diagnostics(
+        ground_truth,
+        predictions,
+        frame_count=2,
+        frame_width=100,
+        frame_height=100,
+        grid_columns=2,
+        grid_rows=2,
+    )
+
+    assert report["per_class"]["car"] == {"tp": 1, "fn": 1, "fp": 0}
+    assert report["spatial_grid"]["cells"]["r1c0"]["tp"] == 1
+    assert report["representative_false_negatives"][0]["frame"] == 1
+    assert report["representative_false_positives"] == []
+
+
+def test_detection_cache_metrics_applies_confidence_floor(tmp_path: Path) -> None:
+    ground_truth = read_cvat_mot_archive(_mot_archive(tmp_path / "truth.zip"))
+    detections = pd.DataFrame(
+        [
+            {"frame": 0, "class_name": "car", "confidence": 0.9, "x1": 10, "y1": 20, "x2": 30, "y2": 50},
+            {"frame": 1, "class_name": "car", "confidence": 0.1, "x1": 11, "y1": 20, "x2": 31, "y2": 50},
+        ]
+    )
+
+    report = detection_cache_metrics(
+        ground_truth,
+        detections,
+        frame_count=2,
+        frame_width=100,
+        frame_height=100,
+        minimum_confidence=0.5,
+    )
+
+    assert report["matched_boxes"] == 1
+    assert report["detection_precision"] == 1.0
+    assert report["detection_recall"] == 0.5
 
 
 def test_quality_gate_requires_every_metric() -> None:

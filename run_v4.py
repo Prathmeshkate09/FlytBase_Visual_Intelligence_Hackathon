@@ -22,6 +22,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--road-user-roi", type=Path, default=None)
     parser.add_argument("--exit-roi", type=Path, default=None)
     parser.add_argument(
+        "--cached-candidates",
+        type=Path,
+        default=None,
+        help=(
+            "Replay pre-threshold candidate_detections.csv and reapply current "
+            "class thresholds, post-processing, ROI, and tracking."
+        ),
+    )
+    parser.add_argument(
         "--cached-detections",
         type=Path,
         default=None,
@@ -62,6 +71,7 @@ def main() -> None:
             tracker_config=args.tracker_config,
             road_user_roi=args.road_user_roi,
             exit_roi=args.exit_roi,
+            cached_candidates=args.cached_candidates,
             cached_detections=args.cached_detections,
             cached_rejected_detections=args.cached_rejected_detections,
             max_seconds=args.max_seconds,

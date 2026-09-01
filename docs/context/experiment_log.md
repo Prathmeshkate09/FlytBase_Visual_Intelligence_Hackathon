@@ -70,6 +70,21 @@ This is append-only. Results without preserved artifacts are labelled accordingl
 - Decision: do not adopt
 - Evidence limitation: output CSV, environment lock, manifest, and evaluator result were not preserved as a registered experiment. Repeat before treating this as proof.
 
+## E007 — Corrected 89-frame development baseline
+
+- Date: 2026-09-01
+- Run ID: `fb89713e-c1e8-4cdf-ac60-4d1b78efc5a2`
+- Development video SHA-256: `c8ead5bc7f3fd82dfd3dfe345061996f8822e9a8bea2048b16b58d7b7edbeda1`
+- MOT archive SHA-256: `36cbe4c61077f9676f1a04e8dd6839a22c778ee9266fb3dcb0602243b96049ae`
+- Tracks SHA-256: `ee2fa6594ae5879cdb48c1f8db18432e5c42cc4f32189c8ab01144d0c1a1aad1`
+- Evidence: `../evaluation_results/e007_dev89_v9/quality_report_ground_truth.json` and `error_diagnostics.json`
+- Configuration: YOLOv9e VisDrone-style full-frame 1920, scene ROI, grouped BoT-SORT, five-observation confirmation, two-frame predictions, offline stitching
+- Counts: 89 frames, 14,415 ground-truth boxes, 11,692 prediction boxes, 174 ground-truth tracks, 164 prediction tracks
+- Metrics: precision 0.6891, recall 0.5589, IDF1 0.6135, HOTA 0.5547, mode accuracy 0.8954, 10 ID switches, 157 fragmentations
+- Pipeline losses: 12,171 accepted detections, 11,407 native observed rows, and 11,358 confirmed observed rows; the historic run predates raw candidate-cache export
+- Error concentration: 3,429 motorcycle and 2,338 pedestrian false negatives dominate recall loss; false positives are concentrated in motorcycles and pedestrians
+- Decision: valid development baseline, failed four of five quality gates; improve detection before treating tracker tuning as the primary lever
+
 ## Next experiment ID
 
-Use `E007` for the corrected 89-frame COCO/MOT baseline evaluation. It must preserve the annotation export, split definition, evaluator configuration, metrics, and error examples.
+Use `E008` for the controlled full-frame 1920/full-frame 2560/SAHI 1280 detector comparison with raw candidate caches and identical corrected development ground truth.

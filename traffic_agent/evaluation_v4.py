@@ -189,18 +189,22 @@ def prepare_predictions(
 
     summary = summaries[["track_id", "final_class_name"]].copy()
     summary["track_id"] = pd.to_numeric(summary["track_id"], errors="raise").astype(int)
-    summary["class_name"] = summary["final_class_name"].map(_normalize_mode)
+    summary["summary_class_name"] = summary["final_class_name"].map(_normalize_mode)
     predictions = predictions.merge(
-        summary[["track_id", "class_name"]], on="track_id", how="left", validate="many_to_one"
+        summary[["track_id", "summary_class_name"]],
+        on="track_id",
+        how="left",
+        validate="many_to_one",
     )
-    if predictions["class_name"].isna().any():
+    if predictions["summary_class_name"].isna().any():
         missing_ids = sorted(
             int(value)
             for value in predictions.loc[
-                predictions["class_name"].isna(), "track_id"
+                predictions["summary_class_name"].isna(), "track_id"
             ].unique()
         )
         raise ValueError(f"track_summary is missing IDs: {missing_ids[:10]}")
+    predictions["class_name"] = predictions.pop("summary_class_name")
     return predictions.sort_values(["frame", "track_id"]).reset_index(drop=True)
 
 
@@ -342,6 +346,225 @@ def mode_classification_metrics(
     }
 
 
+def detection_error_diagnostics(
+    ground_truth: pd.DataFrame,
+    predictions: pd.DataFrame,
+    *,
+    frame_count: int,
+    frame_width: int,
+    frame_height: int,
+    iou_threshold: float = 0.5,
+    grid_columns: int = 4,
+    grid_rows: int = 4,
+    example_limit: int = 25,
+) -> dict[str, Any]:
+    """Explain category-agnostic detection errors without changing gate metrics."""
+    if frame_width <= 0 or frame_height <= 0:
+        raise ValueError("Diagnostic frame dimensions must be positive")
+    if grid_columns < 1 or grid_rows < 1 or example_limit < 0:
+        raise ValueError("Diagnostic grid dimensions must be positive")
+    gt = ground_truth[
+        (~ground_truth["ignored"].astype(bool))
+        & (ground_truth["class_name"].map(_normalize_mode) != "ignore")
+    ].copy()
+    gt["class_name"] = gt["class_name"].map(_normalize_mode)
+    predictions = predictions.copy()
+    predictions["class_name"] = predictions["class_name"].map(_normalize_mode)
+    class_counts: dict[str, dict[str, int]] = {}
+    spatial_counts: dict[str, dict[str, int]] = {}
+    false_negatives: list[dict[str, Any]] = []
+    false_positives: list[dict[str, Any]] = []
+
+    def increment_class(name: str, field: str) -> None:
+        bucket = class_counts.setdefault(name, {"tp": 0, "fn": 0, "fp": 0})
+        bucket[field] += 1
+
+    def grid_key(row: pd.Series) -> str:
+        center_x = (float(row["x1"]) + float(row["x2"])) / 2.0
+        ground_y = float(row["y2"])
+        column = min(grid_columns - 1, max(0, int(center_x / frame_width * grid_columns)))
+        grid_row = min(grid_rows - 1, max(0, int(ground_y / frame_height * grid_rows)))
+        return f"r{grid_row}c{column}"
+
+    def increment_grid(row: pd.Series, field: str) -> None:
+        bucket = spatial_counts.setdefault(
+            grid_key(row), {"tp": 0, "fn": 0, "fp": 0}
+        )
+        bucket[field] += 1
+
+    for frame in range(1, frame_count + 1):
+        gt_frame = gt[gt["frame"] == frame].reset_index(drop=True)
+        pred_frame = predictions[predictions["frame"] == frame].reset_index(drop=True)
+        similarity = _box_iou_matrix(
+            gt_frame[["x1", "y1", "x2", "y2"]].to_numpy(float),
+            pred_frame[["x1", "y1", "x2", "y2"]].to_numpy(float),
+        )
+        matched_gt: set[int] = set()
+        matched_predictions: set[int] = set()
+        if similarity.size:
+            rows, columns = linear_sum_assignment(-similarity)
+            for row_index, column_index in zip(rows, columns):
+                if similarity[row_index, column_index] < iou_threshold:
+                    continue
+                matched_gt.add(int(row_index))
+                matched_predictions.add(int(column_index))
+                gt_row = gt_frame.iloc[row_index]
+                increment_class(str(gt_row["class_name"]), "tp")
+                increment_grid(gt_row, "tp")
+        for row_index, row in gt_frame.iterrows():
+            if int(row_index) in matched_gt:
+                continue
+            increment_class(str(row["class_name"]), "fn")
+            increment_grid(row, "fn")
+            if len(false_negatives) < example_limit:
+                false_negatives.append(
+                    {
+                        "frame": frame - 1,
+                        "track_id": int(row["track_id"]),
+                        "class_name": str(row["class_name"]),
+                        "box": [round(float(row[name]), 3) for name in ("x1", "y1", "x2", "y2")],
+                    }
+                )
+        for row_index, row in pred_frame.iterrows():
+            if int(row_index) in matched_predictions:
+                continue
+            increment_class(str(row["class_name"]), "fp")
+            increment_grid(row, "fp")
+            if len(false_positives) < example_limit:
+                confidence = pd.to_numeric(pd.Series([row.get("confidence")]), errors="coerce").iloc[0]
+                false_positives.append(
+                    {
+                        "frame": frame - 1,
+                        "track_id": int(row["track_id"]),
+                        "class_name": str(row["class_name"]),
+                        "confidence": None if pd.isna(confidence) else round(float(confidence), 6),
+                        "box": [round(float(row[name]), 3) for name in ("x1", "y1", "x2", "y2")],
+                    }
+                )
+    return {
+        "matching_iou": iou_threshold,
+        "per_class": dict(sorted(class_counts.items())),
+        "spatial_grid": {
+            "columns": grid_columns,
+            "rows": grid_rows,
+            "cells": dict(sorted(spatial_counts.items())),
+        },
+        "representative_false_negatives": false_negatives,
+        "representative_false_positives": false_positives,
+    }
+
+
+def detection_cache_metrics(
+    ground_truth: pd.DataFrame,
+    detections: pd.DataFrame,
+    *,
+    frame_count: int,
+    frame_width: int,
+    frame_height: int,
+    minimum_confidence: float = 0.0,
+) -> dict[str, Any]:
+    required = {"frame", "class_name", "confidence", "x1", "y1", "x2", "y2"}
+    missing = required - set(detections.columns)
+    if missing:
+        raise ValueError(f"Detection cache is missing columns: {sorted(missing)}")
+    if not 0.0 <= minimum_confidence <= 1.0:
+        raise ValueError("minimum_confidence must be in [0, 1]")
+    predictions = detections.copy()
+    predictions["confidence"] = pd.to_numeric(
+        predictions["confidence"], errors="raise"
+    )
+    predictions = predictions[predictions["confidence"] >= minimum_confidence].copy()
+    predictions["frame"] = pd.to_numeric(predictions["frame"], errors="raise").astype(int) + 1
+    if (predictions["frame"] < 1).any() or (predictions["frame"] > frame_count).any():
+        raise ValueError("Detection cache frames lie outside the evaluated segment")
+    predictions["track_id"] = np.arange(1, len(predictions) + 1, dtype=int)
+    predictions["observed"] = True
+    diagnostics = detection_error_diagnostics(
+        ground_truth,
+        predictions,
+        frame_count=frame_count,
+        frame_width=frame_width,
+        frame_height=frame_height,
+    )
+    true_positives = sum(
+        int(values["tp"]) for values in diagnostics["per_class"].values()
+    )
+    gt_boxes = int(
+        (
+            (~ground_truth["ignored"].astype(bool))
+            & (ground_truth["class_name"].map(_normalize_mode) != "ignore")
+        ).sum()
+    )
+    prediction_boxes = len(predictions)
+    return {
+        "minimum_confidence": minimum_confidence,
+        "detection_precision": (
+            true_positives / prediction_boxes if prediction_boxes else 0.0
+        ),
+        "detection_recall": true_positives / gt_boxes if gt_boxes else 0.0,
+        "matched_boxes": true_positives,
+        "ground_truth_boxes": gt_boxes,
+        "prediction_boxes": prediction_boxes,
+        "error_diagnostics": diagnostics,
+    }
+
+
+def _pipeline_stage_diagnostics(
+    manifest: dict[str, Any], run_manifest_path: Path, tracks: pd.DataFrame
+) -> dict[str, Any]:
+    outputs = manifest.get("outputs", {})
+    run_directory = run_manifest_path.parent
+
+    candidate_relative = outputs.get("candidate_detections")
+    expected_candidate_hash = str(manifest.get("candidate_detections_sha256") or "")
+    if candidate_relative and expected_candidate_hash:
+        candidate_path = run_directory / str(candidate_relative)
+        if not candidate_path.exists() or sha256_file(candidate_path) != expected_candidate_hash:
+            raise ValueError(
+                "candidate_detections.csv hash does not match run_manifest.json"
+            )
+
+    def read_output(name: str) -> pd.DataFrame | None:
+        relative = outputs.get(name)
+        if not relative:
+            return None
+        path = run_directory / str(relative)
+        return pd.read_csv(path) if path.exists() else None
+
+    candidates = read_output("candidate_detections")
+    accepted = read_output("detections")
+    native = read_output("native_tracks")
+    observed_final = int(tracks["observed"].astype(str).str.lower().eq("true").sum())
+    observed_native = (
+        int(native["observed"].astype(str).str.lower().eq("true").sum())
+        if native is not None
+        else None
+    )
+    counts = {
+        "candidate_detections": len(candidates) if candidates is not None else None,
+        "accepted_detections": len(accepted) if accepted is not None else None,
+        "native_observed_rows": observed_native,
+        "confirmed_observed_rows": observed_final,
+        "final_prediction_rows": len(tracks) - observed_final,
+    }
+    losses = {
+        "candidate_to_accepted": (
+            len(candidates) - len(accepted)
+            if candidates is not None and accepted is not None
+            else None
+        ),
+        "accepted_to_native_observed": (
+            len(accepted) - observed_native
+            if accepted is not None and observed_native is not None
+            else None
+        ),
+        "native_to_confirmed_observed": (
+            observed_native - observed_final if observed_native is not None else None
+        ),
+    }
+    return {"stage_counts": counts, "stage_losses": losses}
+
+
 def trackeval_metrics(sequence: dict[str, Any]) -> dict[str, float | int]:
     if sequence["num_gt_dets"] == 0 or sequence["num_tracker_dets"] == 0:
         return {
@@ -423,6 +646,7 @@ def evaluate_v4(
     summary_path: Path,
     run_manifest_path: Path,
     output_path: Path,
+    diagnostics_output_path: Path | None = None,
     gates: QualityGates | None = None,
 ) -> dict[str, Any]:
     for path in (mot_archive, tracks_path, summary_path, run_manifest_path):
@@ -438,8 +662,9 @@ def evaluate_v4(
         raise ValueError("run_manifest source.processed_frames must be positive")
 
     ground_truth = read_cvat_mot_archive(mot_archive)
+    raw_tracks = pd.read_csv(tracks_path)
     predictions = prepare_predictions(
-        pd.read_csv(tracks_path),
+        raw_tracks,
         pd.read_csv(summary_path),
         frame_count=frame_count,
     )
@@ -448,6 +673,16 @@ def evaluate_v4(
     )
     metrics = trackeval_metrics(sequence)
     mode_metrics = mode_classification_metrics(ground_truth, predictions)
+    diagnostics = detection_error_diagnostics(
+        ground_truth,
+        predictions,
+        frame_count=frame_count,
+        frame_width=int(manifest.get("source", {}).get("width", 0)),
+        frame_height=int(manifest.get("source", {}).get("height", 0)),
+    )
+    diagnostics.update(
+        _pipeline_stage_diagnostics(manifest, run_manifest_path, raw_tracks)
+    )
     gate_report = quality_gate_report(metrics, mode_metrics, gates=gates)
     report = {
         "schema_version": 1,
@@ -461,6 +696,7 @@ def evaluate_v4(
             "ground_truth_boxes": int(sequence["num_gt_dets"]),
             "prediction_boxes": int(sequence["num_tracker_dets"]),
         },
+        "error_diagnostics": diagnostics,
         "provenance": {
             "mot_archive": str(mot_archive),
             "mot_archive_sha256": sha256_file(mot_archive),
@@ -481,4 +717,9 @@ def evaluate_v4(
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if diagnostics_output_path is not None:
+        diagnostics_output_path.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics_output_path.write_text(
+            json.dumps(diagnostics, indent=2), encoding="utf-8"
+        )
     return report

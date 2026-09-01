@@ -31,6 +31,7 @@ class PipelineV4Config:
     tracker_config: Path = Path("config/botsort_drone_v4.yaml")
     road_user_roi: Path | None = None
     exit_roi: Path | None = None
+    cached_candidates: Path | None = None
     cached_detections: Path | None = None
     cached_rejected_detections: Path | None = None
     max_seconds: float | None = None
@@ -53,6 +54,12 @@ class PipelineV4Config:
             raise FileNotFoundError(
                 f"Cached detections file not found: {self.cached_detections}"
             )
+        if self.cached_candidates is not None and not self.cached_candidates.exists():
+            raise FileNotFoundError(
+                f"Cached candidate detections file not found: {self.cached_candidates}"
+            )
+        if self.cached_candidates is not None and self.cached_detections is not None:
+            raise ValueError("cached_candidates and cached_detections are mutually exclusive")
         if (
             self.cached_rejected_detections is not None
             and not self.cached_rejected_detections.exists()
@@ -393,6 +400,11 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
                 if config.cached_detections
                 else None
             ),
+            "cached_candidates": (
+                _resolve_project_path(config.cached_candidates)
+                if config.cached_candidates
+                else None
+            ),
             "cached_rejected_detections": (
                 _resolve_project_path(config.cached_rejected_detections)
                 if config.cached_rejected_detections
@@ -422,11 +434,13 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
 
     detector_config = load_detector_config(config.detection_config)
     detector = (
-        None if config.cached_detections else RoadUserDetector(detector_config)
+        None
+        if config.cached_detections or config.cached_candidates
+        else RoadUserDetector(detector_config)
     )
     cached_detections = (
-        _load_cached_detections(config.cached_detections)
-        if config.cached_detections
+        _load_cached_detections(config.cached_candidates or config.cached_detections)
+        if config.cached_candidates or config.cached_detections
         else None
     )
     if config.cached_rejected_detections is not None:
@@ -450,6 +464,7 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         frame_height=height,
     )
 
+    candidate_rows: list[dict[str, Any]] = []
     detection_rows: list[dict[str, Any]] = []
     rejected_rows: list[dict[str, Any]] = []
     track_rows: list[dict[str, Any]] = []
@@ -469,6 +484,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
                 cached_detections.get(frame_number, [])
                 if cached_detections is not None
                 else detector.predict(frame)
+            )
+            candidate_rows.extend(
+                _detection_row(item, frame_number, fps) for item in raw_detections
             )
             thresholded_detections, threshold_rejections = _apply_confidence_thresholds(
                 raw_detections, detector_config
@@ -579,6 +597,11 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         key=lambda row: (int(row["frame"]), int(row["track_id"]), str(row["event"]))
     )
 
+    _write_rows(
+        config.output_dir / "candidate_detections.csv",
+        DETECTION_FIELDS,
+        candidate_rows,
+    )
     _write_rows(config.output_dir / "detections.csv", DETECTION_FIELDS, detection_rows)
     _write_rows(
         config.output_dir / "rejected_detections.csv",
@@ -653,6 +676,7 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         "blocking_reason": "COCO and MOT ground-truth evaluation has not been run",
         "counts": {
             "processed_frames": processed_frames,
+            "candidate_detections": len(candidate_rows),
             "merged_detections": len(detection_rows),
             "rejected_detections": len(rejected_rows),
             "observed_track_rows": len(final_observed_rows),
@@ -676,6 +700,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
         "run_id": run_id,
         "quality_status": "not_evaluated",
         "input_video_sha256": input_hash,
+        "cached_candidates_sha256": (
+            _sha256(config.cached_candidates) if config.cached_candidates else None
+        ),
         "cached_detections_sha256": (
             _sha256(config.cached_detections) if config.cached_detections else None
         ),
@@ -685,6 +712,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             else None
         ),
         "tracks_sha256": trajectory_hash,
+        "candidate_detections_sha256": _sha256(
+            config.output_dir / "candidate_detections.csv"
+        ),
         "source": {
             "video": str(config.input_video),
             "fps": fps,
@@ -704,6 +734,9 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "cached_detections": (
                 str(config.cached_detections) if config.cached_detections else None
             ),
+            "cached_candidates": (
+                str(config.cached_candidates) if config.cached_candidates else None
+            ),
             "cached_rejected_detections": (
                 str(config.cached_rejected_detections)
                 if config.cached_rejected_detections
@@ -719,6 +752,7 @@ def run_pipeline_v4(config: PipelineV4Config) -> dict[str, Any]:
             "lap": _package_version("lap"),
         },
         "outputs": {
+            "candidate_detections": "candidate_detections.csv",
             "detections": "detections.csv",
             "rejected_detections": "rejected_detections.csv",
             "tracks": "tracks.csv",

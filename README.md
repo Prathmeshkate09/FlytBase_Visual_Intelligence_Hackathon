@@ -64,6 +64,7 @@ removed. Scene-specific ROI JSON may define global `exclude_polygons` and
 zone applies only to `vru` or `road_vehicle`; a global exclusion can silently
 delete a valid road user before tracking. A V4 run emits:
 
+- `candidate_detections.csv`: pre-class-threshold candidates at the detector's global acquisition floor, for auditable replay.
 - `detections.csv`: consolidated detections before tracking.
 - `rejected_detections.csv`: rejected boxes and explicit reasons.
 - `tracks.csv`: both real observations and `observed=False` Kalman predictions.
@@ -100,6 +101,24 @@ python run_v4.py \
 
 The manifest records SHA256 values for both cache inputs so an ROI replay is
 auditable and cannot be confused with fresh detector inference.
+
+For threshold, ROI and tracker experiments, replay the immutable pre-threshold
+cache instead. This reapplies every downstream filter without GPU inference:
+
+```bash
+python run_v4.py \
+  --input /content/source_video_89f_dev_c8ead5.mp4 \
+  --output /content/flytbase_results/replay \
+  --detection-config config/detection_candidate.json \
+  --tracker-config config/botsort_candidate.yaml \
+  --cached-candidates /content/gpu_run/candidate_detections.csv \
+  --max-prediction-frames 2 \
+  --confirmation-observations 3 \
+  --max-seconds 3
+```
+
+`tune_v4.py` performs the registered staged threshold/ROI, BoT-SORT and
+lifecycle comparison and ranks only hash-linked ground-truth reports.
 
 The verification renderer draws every track row. `max_labels_per_frame` caps
 only descriptive labels; capped, colliding and short-occluded rows retain a
@@ -147,6 +166,17 @@ The evaluator verifies the trajectory hash, removes CVAT rows explicitly
 marked ignored, computes category-agnostic road-user HOTA/IDF1 and IoU-0.5
 precision/recall, and reports mode-classification accuracy separately. The
 status changes to `passed` only when every configured gate passes.
+
+Corrected COCO labels can be converted into a training dataset only when their
+video hash and complete frame sequence match:
+
+```bash
+python prepare_yolo_dataset.py \
+  --video /content/source_video_89f_dev_c8ead5.mp4 \
+  --coco-annotations /content/FlytBase_L1_dev89_corrected_COCO.zip \
+  --output /content/dev89_yolo \
+  --expected-video-sha256 c8ead5bc7f3fd82dfd3dfe345061996f8822e9a8bea2048b16b58d7b7edbeda1
+```
 
 ## Engineering boundary
 

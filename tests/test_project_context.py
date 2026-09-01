@@ -20,11 +20,11 @@ SPEC.loader.exec_module(context_status)
 def test_project_context_is_complete_and_unverified() -> None:
     state = context_status.load_and_validate_state(REPO_ROOT)
 
-    assert state["levels"]["1"]["status"] == "candidate_needs_ground_truth"
-    assert state["ground_truth"]["status"] == "cvat_seed_imported_awaiting_manual_correction"
+    assert state["levels"]["1"]["status"] == "development_baseline_failed_gates"
+    assert state["ground_truth"]["status"] == "corrected_development_exports_validated"
     assert state["ground_truth"]["development_frames"] == 89
     assert state["ground_truth"]["cvat_frame_range"] == "0-88"
-    assert state["next_action"]["id"] == "E007"
+    assert state["next_action"]["id"] == "E008"
 
 
 def test_context_rejects_false_verified_claim(monkeypatch: pytest.MonkeyPatch) -> None:
