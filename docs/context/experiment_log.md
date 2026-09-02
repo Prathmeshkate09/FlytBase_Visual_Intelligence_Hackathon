@@ -85,6 +85,52 @@ This is append-only. Results without preserved artifacts are labelled accordingl
 - Error concentration: 3,429 motorcycle and 2,338 pedestrian false negatives dominate recall loss; false positives are concentrated in motorcycles and pedestrians
 - Decision: valid development baseline, failed four of five quality gates; improve detection before treating tracker tuning as the primary lever
 
+## E008 - Controlled detector comparison and scene refit
+
+- Date: 2026-09-02
+- Code commit: `fb2f4545d2bb9cd5549f6a3c2b267121dc2c87b0`
+- Kaggle kernel: `seb09prathameshkate/flytbase-v4-gpu-runner`, version 12
+- Development video SHA-256: `c8ead5bc7f3fd82dfd3dfe345061996f8822e9a8bea2048b16b58d7b7edbeda1`
+- Reconstructed MOT SHA-256: `b10b5e92988aff11848a18b35e1f6b830f5ca4861d631ff20aad7cce90edac45`
+- Pretrained tracked results: full 1920 was best at precision 0.6805, recall
+  0.5598, IDF1 0.6107, and HOTA 0.5535; full 2560 and SAHI 1280 did not improve
+  the complete gate result.
+- Training: frames 0-70 train and 71-88 validation, 80 epochs maximum, seed 42,
+  image size 1280, AMP, batch 4; validation selected epoch 67. Refit used all 89
+  development frames for 67 epochs with batch 1.
+- Frozen model: `last.pt`, 117,334,505 bytes, SHA-256
+  `02382dcc750f479ea23bfb6e51f82cbf257b1ffd95883b6b05b61822b3ea36c4`.
+- Raw scene-full operating points: confidence 0.30 produced precision 0.9149
+  and recall 0.9439; confidence 0.40 produced precision 0.9408 and recall 0.9211.
+- Decision: freeze the scene-refit full-frame candidate cache and tune
+  post-detection/tracking from that immutable cache.
+- Limitation: these are development results; the held-out labels were not used.
+
+## E009 - Frozen-candidate confidence, ROI, BoT-SORT, and lifecycle sweep
+
+- Date: 2026-09-02
+- Code commit: `4ae29363812a0d12157f1ecfe240ce5df8965151`
+- Kaggle kernel: `seb09prathameshkate/flytbase-v4-cached-tuning-runner`, version 1
+- Candidate cache SHA-256: `99e047847b9f65f439af640aeccdae99f2f819cdcca5cf5e86321818cd1c4a6e`
+- Inputs: the E008 development video and reconstructed MOT archive; 18 focused
+  Kaggle tests passed before replay.
+- Sweep: seven confidence variants with and without ROI, eight association
+  variants, then confirmation 1/3/5, prediction horizon 0/2, and stitching
+  disabled/enabled for the two best association variants; 46 total runs.
+- Winner run ID: `e18e20ab-85db-40b7-b5ee-fee5213617c4`.
+- Winner: uniform confidence 0.40, no ROI, default BoT-SORT, confirmation 5,
+  two-frame visible prediction horizon, offline stitching enabled.
+- Counts: 89 frames, 14,415 ground-truth boxes, 14,225 prediction boxes, 174
+  ground-truth tracks, and 177 prediction tracks.
+- Metrics: precision 0.9391, recall 0.9267, IDF1 0.9230, HOTA 0.7968, mode
+  accuracy 1.0000, 21 ID switches, and 100 fragmentations; all five development
+  gates passed.
+- Hashes: tracks `20cd0d5f...8976a`, track summary `42416823...48220`, run
+  manifest `b6c9ebae...862ef`, and tuning summary `199a6697...74059`.
+- Decision: accept as the frozen development configuration for held-out proof.
+- Limitation: Level 1 remains incomplete until the separately corrected held-out
+  clip passes all gates in one frozen evaluation.
+
 ## Next experiment ID
 
-Use `E008` for the controlled full-frame 1920/full-frame 2560/SAHI 1280 detector comparison with raw candidate caches and identical corrected development ground truth.
+Use `E010` for the one-time frozen held-out evaluation after manual correction.

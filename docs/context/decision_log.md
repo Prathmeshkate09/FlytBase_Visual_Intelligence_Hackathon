@@ -116,3 +116,23 @@ Statuses: `accepted`, `provisional`, `rejected`, `deferred`, or `superseded`.
 - Evidence: E007 achieved precision 0.6891, recall 0.5589, IDF1 0.6135, and HOTA 0.5547 on corrected development ground truth. Reconsidering all ROI-rejected detections raised raw recall only to 0.6848 while reducing precision to 0.5707.
 - Decision: compare higher-resolution and sliced detector candidates, then fine-tune on development labels if raw precision and recall cannot both approach 0.92. Tune BoT-SORT only after freezing the detector cache.
 - Constraint: the `da399` clip remains held out and may be evaluated only after the development configuration is frozen.
+
+## D015 - Freeze the scene-refit full-frame detector and default BoT-SORT
+
+- Status: accepted for held-out proof
+- Date: 2026-09-02
+- Evidence: E008/E009. The scene-refit candidate at uniform confidence 0.40
+  achieved raw precision 0.9408 and recall 0.9211. Hash-identical cached replay
+  then achieved precision 0.9391, recall 0.9267, IDF1 0.9230, HOTA 0.7968, and
+  mode accuracy 1.0000 on corrected development ground truth.
+- Decision: freeze full-frame 1920 inference, uniform class confidence 0.40,
+  no scene road-user ROI, the existing default BoT-SORT association settings,
+  five-observation confirmation, the two-frame maximum visible prediction rule,
+  and offline stitching.
+- Reason: this is the highest-HOTA passing development configuration. Removing
+  the ROI recovered valid road users, while the 0.40 detector threshold retained
+  the raw precision/recall margin. Alternative tracker thresholds did not beat
+  the default settings on identical detections.
+- Constraint: development success is not Level-1 completion. The `da399` clip
+  must now receive independent manual ground truth and one frozen evaluation;
+  it must not become a repeated tuning set.

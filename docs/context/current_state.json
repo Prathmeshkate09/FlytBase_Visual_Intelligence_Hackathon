@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-01",
+  "as_of": "2026-09-02",
   "project_mode": "personal_research_after_hackathon",
   "repository": {
     "branch": "level1-v4",
-    "implementation_baseline_commit": "99d4974f6f14f1a48a3c247a905fbb60b2eb5a2d"
+    "implementation_baseline_commit": "4ae29363812a0d12157f1ecfe240ce5df8965151"
   },
   "challenge": {
     "source": "https://fbhackathonplatform-production.up.railway.app/",
@@ -21,8 +21,8 @@
   "levels": {
     "1": {
       "name": "Detection and Tracking",
-      "status": "development_baseline_failed_gates",
-      "run_id": "fb89713e-c1e8-4cdf-ac60-4d1b78efc5a2"
+      "status": "development_gates_met_heldout_pending",
+      "run_id": "e18e20ab-85db-40b7-b5ee-fee5213617c4"
     },
     "2": {
       "name": "Object-Level Insight",
@@ -49,6 +49,7 @@
     "heldout_sha256": "da399b57b6faa978115ec2d936a1670d4f7e995298b9cb508070c5e9e40168ee",
     "heldout_original_source": "D:\\Flybase\\Intersection_Merged.MP4",
     "heldout_original_frame_range": "870-958",
+    "heldout_source_verification": "all 89 decoded frames pixel-identical to original frames 870-958 on 2026-09-02",
     "cvat_task_id": 2540401,
     "cvat_job_id": 4400803,
     "cvat_frame_range": "0-88",
@@ -56,32 +57,34 @@
     "cvat_frame_resolution_verification": "live_job_canvas_width_and_height",
     "cvat_annotation_image_quality": "unverified_after_task_creation; creation screenshot showed 70",
     "cvat_seed_import_status": "successful_boundary_visual_check_at_frames_0_and_88",
-    "heldout_policy": "keep_unseen_until_development_configuration_is_frozen",
-    "precision": 0.6891036606226479,
-    "recall": 0.5589316684009712,
-    "idf1": 0.6134753131344084,
-    "hota": 0.5547206077018522
+    "heldout_policy": "development configuration frozen; generate a frozen-model seed, manually correct all 89 frames, then evaluate exactly once",
+    "precision": 0.9391212653778559,
+    "recall": 0.9267429760665973,
+    "idf1": 0.9229748603351955,
+    "hota": 0.7967927543742478,
+    "mode_accuracy": 1.0
   },
   "current_candidates": {
-    "detector": "YOLOv9e VisDrone-style full-frame 1920 candidate",
-    "tracker": "BoT-SORT with sparseOptFlow GMC",
+    "detector": "scene-refit YOLOv9e full-frame 1920, uniform confidence 0.40, no ROI",
+    "detector_weight_sha256": "02382dcc750f479ea23bfb6e51f82cbf257b1ffd95883b6b05b61822b3ea36c4",
+    "tracker": "default BoT-SORT with sparseOptFlow GMC, five-observation confirmation, offline stitching",
     "visible_prediction_horizon_frames": 2,
     "sahi": "experimental_not_default",
     "appearance_reid": "deferred_pending_controlled_ground_truth_test"
   },
   "current_level_1_counts": {
-    "frames": 449,
-    "accepted_detections": 58353,
-    "observed_track_rows": 51954,
-    "displayed_prediction_rows": 1405,
-    "native_tracks": 279,
-    "final_tracks": 241,
-    "internal_expirations": 57,
-    "rendered_boxes": 53359,
-    "rendered_visible_ids": 53359
+    "frames": 89,
+    "candidate_detections": 16301,
+    "accepted_detections": 14097,
+    "observed_track_rows": 14044,
+    "displayed_prediction_rows": 181,
+    "ground_truth_tracks": 174,
+    "final_tracks": 177,
+    "id_switches": 21,
+    "fragmentations": 100
   },
   "next_action": {
-    "id": "E008",
-    "description": "Compare full-frame 1920, full-frame 2560, and SAHI 1280 detector candidates with raw caches on corrected development ground truth; fine-tune if raw precision and recall remain below 0.92."
+    "id": "heldout_manual_checkpoint",
+    "description": "Generate the hash-pinned frozen-model CVAT seed package, then have the user manually correct and export all 89 held-out frames before one E010 evaluation."
   }
 }

@@ -1,0 +1,19 @@
+{
+  "id": "seb09prathameshkate/flytbase-v4-heldout-seed-runner",
+  "title": "FlytBase V4 Heldout Seed Runner",
+  "code_file": "runner.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [
+    "seb09prathameshkate/flytbase-v4-inputs"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [
+    "seb09prathameshkate/flytbase-v4-gpu-runner"
+  ],
+  "model_sources": []
+}

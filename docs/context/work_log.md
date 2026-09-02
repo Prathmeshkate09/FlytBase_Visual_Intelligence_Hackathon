@@ -319,3 +319,53 @@ reviewable reasons that another engineer can verify.
 - Next: run the hash-pinned Kaggle replay, rank only development configurations,
   and freeze the detector/tracker configuration only if every development gate
   passes.
+
+## 2026-09-02 - Freeze the passing development configuration
+
+- Request: continue monitoring and complete the detector/tracker improvement.
+- Actions and evidence:
+  - monitored all 46 hash-identical cached replay runs to completion;
+  - downloaded the tuning summary, per-run reports, manifests, generated
+    configurations, and the frozen model weight;
+  - verified Kaggle worker status `COMPLETE`, 18 focused tests passed, and all
+    winner gate booleans are true;
+  - recorded the complete E008 detector comparison/refit and E009 replay sweep;
+    and
+  - added portable frozen detector and development-freeze manifests.
+- Engineering rationale: freeze the highest-HOTA configuration only after every
+  development gate passes, retain the two-frame prediction safety rule, and
+  preserve hashes before exposing the held-out interval to annotation.
+- Result: development precision 0.9391, recall 0.9267, IDF1 0.9230, HOTA 0.7968,
+  and mode accuracy 1.0000 all pass. The accepted run has 21 ID switches and 100
+  fragmentations over 174 ground-truth tracks.
+- Limitations: this is not an unseen result and does not complete Level 1. The
+  held-out labels do not yet exist and were not inspected during tuning.
+- Next: verify the `da399` clip against `D:\Flybase`, generate only a frozen-model
+  CVAT seed, then pause for complete manual held-out correction and exports.
+
+## 2026-09-02 - Verify held-out media and prepare the frozen seed runner
+
+- Request: continue automatically from the frozen development configuration to
+  the held-out manual-annotation checkpoint.
+- Actions and evidence:
+  - compared every decoded frame in the registered `da399` held-out clip with
+    original intersection-video frames 870-958;
+  - confirmed 89 of 89 frames were pixel-identical, with mean and maximum
+    absolute error 0 and no mismatched frame;
+  - added a private GPU Kaggle runner that locates the held-out video and frozen
+    model by SHA-256, verifies the tracker and freeze manifests, and uses the
+    frozen 1920/confidence-0.40/no-ROI detector with default BoT-SORT,
+    five-observation confirmation, two-frame visible prediction, and stitching;
+  - constrained the runner to create a CVAT 1.1 seed and provenance archive; it
+    does not load ground-truth labels or run held-out evaluation; and
+  - ran the focused context, tuning, and CVAT tests locally: 10 passed and one
+    local-asset test was deliberately deselected.
+- Engineering rationale: exact media correspondence and immutable model/config
+  hashes prevent accidental interval or configuration drift. Seed inference is
+  permitted after freezing, while labels remain unseen until manual correction.
+- Result: the held-out source is fully verified and the seed-only Kaggle job is
+  ready to publish.
+- Limitations: the generated seed is a model prediction, not ground truth, and
+  the Kaggle GPU run has not yet completed.
+- Next: publish and monitor the private seed runner, download and verify its
+  archive, then hand the package to the user for exhaustive CVAT correction.

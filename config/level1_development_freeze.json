@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "status": "development_gates_met_heldout_pending",
+  "code_commit": "4ae29363812a0d12157f1ecfe240ce5df8965151",
+  "development_video_sha256": "c8ead5bc7f3fd82dfd3dfe345061996f8822e9a8bea2048b16b58d7b7edbeda1",
+  "ground_truth_sha256": "b10b5e92988aff11848a18b35e1f6b830f5ca4861d631ff20aad7cce90edac45",
+  "model": {
+    "artifact": "intersection_refit_all89/weights/last.pt",
+    "bytes": 117334505,
+    "sha256": "02382dcc750f479ea23bfb6e51f82cbf257b1ffd95883b6b05b61822b3ea36c4",
+    "training_epochs": 67,
+    "image_size": 1280,
+    "seed": 42
+  },
+  "inference": {
+    "config": "config/detection_scene_full_1920_frozen.json",
+    "image_size": 1920,
+    "class_confidence": 0.4,
+    "road_user_roi": null,
+    "candidate_detections_sha256": "99e047847b9f65f439af640aeccdae99f2f819cdcca5cf5e86321818cd1c4a6e"
+  },
+  "tracking": {
+    "config": "config/botsort_drone_v4.yaml",
+    "config_sha256": "ce957ed4808e5402e1e53579aea075c78d031e11aa8f12c4d61ca21437f58da5",
+    "confirmation_observations": 5,
+    "max_visible_prediction_frames": 2,
+    "offline_stitching": true
+  },
+  "development_evaluation": {
+    "run_id": "e18e20ab-85db-40b7-b5ee-fee5213617c4",
+    "precision": 0.9391212653778559,
+    "recall": 0.9267429760665973,
+    "idf1": 0.9229748603351955,
+    "hota": 0.7967927543742478,
+    "mode_accuracy": 1.0,
+    "id_switches": 21,
+    "fragmentations": 100,
+    "tracks_sha256": "20cd0d5fd0640ecec8625b2aeb41a4865fe895c3375ca9c40ebbb79f8988976a",
+    "track_summary_sha256": "4241682308456af451d1e1fd02c3b056b2b373461302aade81cb6bab6bd48220",
+    "run_manifest_sha256": "b6c9ebae2fade77d76a20680aeb0b93dbf772fcc4b38803716b43c90ad5862ef",
+    "tuning_summary_sha256": "199a66971eccda44a4d1bd0311fc2516e10202ddda7c7d9256b7f70e63374059",
+    "trackeval_commit": "12c8791b303e0a0b50f753af204249e622d0281a"
+  },
+  "heldout": {
+    "video_sha256": "da399b57b6faa978115ec2d936a1670d4f7e995298b9cb508070c5e9e40168ee",
+    "status": "labels_not_created_or_inspected",
+    "policy": "generate frozen-model seed, manually correct all 89 frames, then evaluate exactly once"
+  }
+}

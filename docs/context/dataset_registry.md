@@ -112,7 +112,9 @@ C:\Users\PRATHAMESH\Documents\Codex\2026-08-22\kn\work\cvat_upload\level1_v4_hel
 - video SHA-256: `da399b57b6faa978115ec2d936a1670d4f7e995298b9cb508070c5e9e40168ee`
 - source: `D:\Flybase\Intersection_Merged.MP4`, frames 870-958 inclusive
 - dimensions: 3840 x 2160; frames: 89; FPS: 29.97003
-- verification: decoded held-out frames 0, 1, 44, and 88 were pixel-identical to original-source frames 870, 871, 914, and 958 respectively
+- verification: on 2026-09-02, all 89 decoded held-out frames were compared
+  with original-source frames 870-958; mean absolute error was 0.0, maximum
+  absolute error was 0, and no frame mismatched
 - role: unseen held-out proof; do not inspect its seed labels, tune thresholds, or train on this interval before freezing the development configuration
 
 ## Missing dataset assets
