@@ -731,6 +731,9 @@ if RUN_SCENE_FINETUNING:
         fine_config = {
             **base_detector_config,
             "model_path": str(FROZEN_SCENE_WEIGHTS),
+            # Scene fine-tuning uses the eight canonical Level-1 classes,
+            # unlike the ten-class VisDrone source checkpoint.
+            "class_ids": list(range(8)),
             "image_size": 1920,
             "use_sahi": use_sahi,
             "perform_standard_prediction": use_sahi,
