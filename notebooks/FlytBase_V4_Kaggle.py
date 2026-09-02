@@ -698,7 +698,7 @@ if RUN_SCENE_FINETUNING:
         [
             sys.executable, str(REPO_DIR / "prepare_yolo_dataset.py"),
             "--video", str(VIDEO_PATH),
-            "--coco-annotations", str(coco_matches[0]),
+            "--coco-annotations", str(coco_annotations),
             "--output", str(refit_dataset),
             "--expected-video-sha256", VIDEO_SHA256,
             "--expected-frames", "89", "--all-train",
@@ -726,6 +726,7 @@ else:
 # %%
 if RUN_SCENE_FINETUNING:
     fine_tuned_reports = {}
+    fine_tuned_candidate_reports = {}
     for mode_name, use_sahi in (("scene_full_1920", False), ("scene_sahi_1280", True)):
         fine_config = {
             **base_detector_config,
@@ -750,6 +751,17 @@ if RUN_SCENE_FINETUNING:
             cwd=REPO_DIR,
             check=True,
         )
+        fine_candidate_report_path = fine_output / "quality_report_candidates.json"
+        subprocess.run(
+            [
+                sys.executable, str(REPO_DIR / "evaluate_detection_cache.py"),
+                "--mot-ground-truth", str(MOT_GROUND_TRUTH),
+                "--detections", str(fine_output / "candidate_detections.csv"),
+                "--output", str(fine_candidate_report_path),
+            ],
+            cwd=REPO_DIR,
+            check=True,
+        )
         fine_report_path = fine_output / "quality_report_ground_truth.json"
         subprocess.run(
             [
@@ -764,6 +776,9 @@ if RUN_SCENE_FINETUNING:
             cwd=REPO_DIR,
             check=True,
         )
+        fine_tuned_candidate_reports[mode_name] = json.loads(
+            fine_candidate_report_path.read_text(encoding="utf-8")
+        )
         fine_tuned_reports[mode_name] = json.loads(fine_report_path.read_text(encoding="utf-8"))
         comparison_outputs[mode_name] = fine_output
     fine_winner_name, fine_winner_report = max(fine_tuned_reports.items(), key=ranking)
@@ -772,6 +787,8 @@ if RUN_SCENE_FINETUNING:
         SMOKE_OUTPUT = comparison_outputs[WINNER_NAME]
     print("Frozen development winner:", WINNER_NAME)
     print(json.dumps(WINNER_REPORT, indent=2))
+    print("Fine-tuned raw detector reports:")
+    print(json.dumps(fine_tuned_candidate_reports, indent=2))
 
 # %% [markdown]
 # ## 16. Package outputs for Kaggle versioning/download
