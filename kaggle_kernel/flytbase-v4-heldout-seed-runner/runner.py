@@ -114,8 +114,8 @@ def write_delivery_archive() -> dict[str, object]:
             "frames": 89,
         },
         "files": {
-            name: {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
-            for name, path in sorted(DELIVERY_DIR.iterdir())
+            path.name: {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
+            for path in sorted(DELIVERY_DIR.iterdir())
             if path.is_file()
         },
     }

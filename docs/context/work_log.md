@@ -405,3 +405,21 @@ reviewable reasons that another engineer can verify.
 - Limitation: version 2 generated no annotations; version 3 must prove the
   compatibility wheel on the assigned worker.
 - Next: publish and monitor version 3 without changing model parameters.
+
+## 2026-09-02 - Correct final seed-archive enumeration
+
+- Request: continue through the held-out seed checkpoint.
+- Actions and evidence: version 3 installed the compatibility runtime, passed
+  its one-frame GPU probe, processed all 89 frames, and generated a 143-track
+  CVAT seed. It then failed only while enumerating copied delivery files because
+  the code attempted to unpack each `Path` as a name/path pair. Corrected the
+  comprehension to derive each name from `path.name`; recovered version-3 XML,
+  ZIP, manifest, tracks, and runtime files as secondary evidence.
+- Engineering rationale: keep the successful inference semantics unchanged and
+  correct only deterministic archive assembly.
+- Result: seed generation is proven; one final runner version is required to
+  emit the complete self-hashed delivery archive and a successful worker state.
+- Limitation: recovered version-3 files do not include the final provenance and
+  outer archive because the worker stopped while creating them.
+- Next: publish the one-line packaging correction, rerun, and verify the final
+  archive locally before the manual CVAT handoff.
