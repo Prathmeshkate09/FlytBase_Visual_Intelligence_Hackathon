@@ -22,6 +22,21 @@ DETECTION_THRESHOLD_VARIANTS: dict[str, dict[str, float]] = {
         "pedestrian": 0.20, "bicycle": 0.20, "car": 0.18, "lgv": 0.18,
         "hgv": 0.18, "truck": 0.18, "bus": 0.18, "motorcycle": 0.10,
     },
+    # Scene-refit candidate-cache evaluation found the useful precision/recall
+    # frontier above the legacy aerial-checkpoint thresholds. Keep these
+    # explicit so replay tuning covers that evidence without rerunning the GPU.
+    "uniform030": {
+        "pedestrian": 0.30, "bicycle": 0.30, "car": 0.30, "lgv": 0.30,
+        "hgv": 0.30, "truck": 0.30, "bus": 0.30, "motorcycle": 0.30,
+    },
+    "uniform035": {
+        "pedestrian": 0.35, "bicycle": 0.35, "car": 0.35, "lgv": 0.35,
+        "hgv": 0.35, "truck": 0.35, "bus": 0.35, "motorcycle": 0.35,
+    },
+    "uniform040": {
+        "pedestrian": 0.40, "bicycle": 0.40, "car": 0.40, "lgv": 0.40,
+        "hgv": 0.40, "truck": 0.40, "bus": 0.40, "motorcycle": 0.40,
+    },
 }
 
 

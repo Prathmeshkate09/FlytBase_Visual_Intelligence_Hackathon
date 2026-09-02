@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from traffic_agent.tuning_v4 import report_rank, tracker_config_variant
+from traffic_agent.tuning_v4 import (
+    DETECTION_THRESHOLD_VARIANTS,
+    report_rank,
+    tracker_config_variant,
+)
 
 
 def _report(*, status: str, hota: float, idf1: float, switches: int = 0) -> dict:
@@ -43,3 +47,13 @@ def test_tracker_variant_rejects_invalid_threshold_order() -> None:
     }
     with pytest.raises(ValueError, match="cannot exceed"):
         tracker_config_variant(base, {"track_low_thresh": 0.30})
+
+
+def test_scene_refit_confidence_frontier_is_in_detection_sweep() -> None:
+    for confidence in (0.30, 0.35, 0.40):
+        thresholds = DETECTION_THRESHOLD_VARIANTS[f"uniform{int(confidence * 100):03d}"]
+        assert set(thresholds) == {
+            "pedestrian", "bicycle", "car", "lgv", "hgv", "truck", "bus",
+            "motorcycle",
+        }
+        assert set(thresholds.values()) == {confidence}

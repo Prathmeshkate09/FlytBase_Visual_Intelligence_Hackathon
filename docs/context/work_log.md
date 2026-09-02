@@ -290,3 +290,32 @@ reviewable reasons that another engineer can verify.
 - Next: retrieve the completed Kaggle artifacts, validate their hashes and
   metrics, and record the detector-selection conclusion before freezing the
   detection cache for BoT-SORT tuning.
+
+## 2026-09-02 - Start frozen scene-detector replay tuning
+
+- Request: continue from the completed scene fine-tuning run and improve the
+  remaining Level-1 recall and identity gates.
+- Actions and evidence:
+  - verified that Kaggle v12 completed without a traceback and downloaded only
+    its small evaluation reports and frozen replay inputs;
+  - verified development video hash `c8ead5bc...beda1`, candidate-cache hash
+    `99e04784...1c4a6e`, reconstructed MOT hash `b10b5e92...dac45`, and detector
+    config hash `8462f2b2...6fe84`;
+  - confirmed the fine-tuned full-frame detector has raw passing operating
+    points at confidence 0.30 and 0.40, while the existing replay sweep stopped
+    below that range;
+  - added uniform 0.30, 0.35, and 0.40 confidence variants plus a regression
+    test, which passed with the existing tuning tests (`3 passed`); and
+  - added a private, CPU-only Kaggle runner that consumes the completed v12
+    output as a kernel source and enforces every input hash before replay.
+- Engineering rationale: the detector already exceeds the raw precision and
+  recall margin, so repeating GPU training would add cost without addressing
+  the observed post-detection loss. Cached replay keeps detector observations
+  identical while isolating confidence, ROI, association, and lifecycle effects.
+- Result: the reproducible tuning-only runner is ready to publish and execute.
+- Limitations: the local virtual environment lacks PyTorch, which BoT-SORT
+  requires even when detector inference is cached; no local replay metrics were
+  produced. The held-out clip was not opened or evaluated.
+- Next: run the hash-pinned Kaggle replay, rank only development configurations,
+  and freeze the detector/tracker configuration only if every development gate
+  passes.
