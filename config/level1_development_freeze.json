@@ -44,7 +44,8 @@
   },
   "heldout": {
     "video_sha256": "da399b57b6faa978115ec2d936a1670d4f7e995298b9cb508070c5e9e40168ee",
-    "status": "labels_not_created_or_inspected",
+    "status": "frozen_seed_generated_labels_not_created_or_inspected",
+    "seed_archive_sha256": "5ae95e0ea6a56d2215b81fcddb4c8d5b0876bb89b4cd71f543c2c49cefbe4135",
     "policy": "generate frozen-model seed, manually correct all 89 frames, then evaluate exactly once"
   }
 }

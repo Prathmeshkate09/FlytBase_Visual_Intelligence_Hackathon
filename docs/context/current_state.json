@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-02",
+  "as_of": "2026-09-03",
   "project_mode": "personal_research_after_hackathon",
   "repository": {
     "branch": "level1-v4",
@@ -50,6 +50,9 @@
     "heldout_original_source": "D:\\Flybase\\Intersection_Merged.MP4",
     "heldout_original_frame_range": "870-958",
     "heldout_source_verification": "all 89 decoded frames pixel-identical to original frames 870-958 on 2026-09-02",
+    "heldout_seed_status": "frozen_seed_generated_manual_correction_pending",
+    "heldout_seed_archive": "C:\\Users\\PRATHAMESH\\Documents\\Codex\\2026-08-22\\kn\\work\\cvat_upload\\level1_v4_heldout_frozen_seed\\FlytBase_L1_Heldout_Frozen_Seed.zip",
+    "heldout_seed_archive_sha256": "5ae95e0ea6a56d2215b81fcddb4c8d5b0876bb89b4cd71f543c2c49cefbe4135",
     "cvat_task_id": 2540401,
     "cvat_job_id": 4400803,
     "cvat_frame_range": "0-88",
@@ -85,6 +88,6 @@
   },
   "next_action": {
     "id": "heldout_manual_checkpoint",
-    "description": "Generate the hash-pinned frozen-model CVAT seed package, then have the user manually correct and export all 89 held-out frames before one E010 evaluation."
+    "description": "Have the user import the frozen seed into a new task for the exact da399 video, manually correct all 89 held-out frames, and export CVAT, MOT, and COCO before one E010 evaluation."
   }
 }

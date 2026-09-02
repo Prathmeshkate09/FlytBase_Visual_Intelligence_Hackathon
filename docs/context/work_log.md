@@ -423,3 +423,31 @@ reviewable reasons that another engineer can verify.
   outer archive because the worker stopped while creating them.
 - Next: publish the one-line packaging correction, rerun, and verify the final
   archive locally before the manual CVAT handoff.
+
+## 2026-09-03 - Complete and verify the frozen held-out CVAT seed
+
+- Request: continue after the session limit from the final seed-packaging fix.
+- Actions and evidence:
+  - published Kaggle seed-runner version 4 from commit `595ab7b` and monitored
+    it to worker status `COMPLETE`;
+  - verified the one-frame P100 probe and complete 89-frame frozen inference;
+  - generated a CVAT 1.1 package with 143 predicted tracks, 10,437 observed
+    boxes, 305 explicitly predicted boxes, and 25 outside markers;
+  - downloaded the 831,348-byte outer archive and matched its SHA-256
+    `5ae95e0e...be4135` to the Kaggle worker result;
+  - extracted the archive locally, verified every retained file against
+    `seed_provenance.json`, found no hash mismatches, confirmed the inner import
+    ZIP contains only XML, instructions, and its manifest, and confirmed all
+    10,767 XML boxes lie within frames 0-88; and
+  - confirmed the manifest remains `seed_predictions_only` with
+    `manual_review_required: true`; no held-out labels or evaluation metrics were
+    loaded.
+- Engineering rationale: the seed is only a labour-saving starting point. Hash,
+  frame-bound, and role checks prevent it from being mistaken for corrected
+  held-out truth or silently evaluated before the manual checkpoint.
+- Result: the frozen held-out seed package is complete and locally verified.
+- Limitations: 143 predicted tracks are not 143 verified physical identities;
+  every frame, box, class, outside state, and identity still needs human review.
+- Next: create a new 89-frame CVAT task with the exact `da399` video, import
+  `cvat_seed_annotations.zip` as CVAT for video 1.1 using Replace, correct all
+  frames, and export CVAT, MOT 1.0, and COCO before the single E010 evaluation.

@@ -116,6 +116,10 @@ C:\Users\PRATHAMESH\Documents\Codex\2026-08-22\kn\work\cvat_upload\level1_v4_hel
   with original-source frames 870-958; mean absolute error was 0.0, maximum
   absolute error was 0, and no frame mismatched
 - role: unseen held-out proof; do not inspect its seed labels, tune thresholds, or train on this interval before freezing the development configuration
+- frozen seed: `cvat_upload/level1_v4_heldout_frozen_seed/FlytBase_L1_Heldout_Frozen_Seed.zip`
+- frozen seed SHA-256: `5ae95e0ea6a56d2215b81fcddb4c8d5b0876bb89b4cd71f543c2c49cefbe4135`
+- seed status: 143 model-predicted tracks requiring exhaustive manual correction;
+  no held-out ground-truth labels have been created, inspected, or evaluated
 
 ## Missing dataset assets
 
