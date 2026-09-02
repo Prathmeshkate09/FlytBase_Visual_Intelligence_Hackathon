@@ -52,6 +52,30 @@ def run(command: list[str], *, cwd: Path | None = None) -> None:
     subprocess.run(command, cwd=cwd, check=True)
 
 
+def ensure_compatible_gpu_runtime() -> str:
+    capability = subprocess.check_output(
+        ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+        text=True,
+    ).strip().splitlines()[0]
+    print("Assigned GPU compute capability:", capability)
+    if int(capability.split(".", maxsplit=1)[0]) < 7:
+        run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--force-reinstall",
+                "torch==2.5.1",
+                "torchvision==0.20.1",
+                "--index-url",
+                "https://download.pytorch.org/whl/cu121",
+            ]
+        )
+    return capability
+
+
 def write_delivery_archive() -> dict[str, object]:
     DELIVERY_DIR.mkdir(parents=True, exist_ok=True)
     retained_files = {
@@ -64,6 +88,7 @@ def write_delivery_archive() -> dict[str, object]:
         "quality_report.json": RUN_DIR / "quality_report.json",
         "run_manifest.json": RUN_DIR / "run_manifest.json",
         "frozen_detector_config.json": WORK_ROOT / "runtime_detector_config.json",
+        "runtime_environment.json": WORK_ROOT / "runtime_environment.json",
         "development_freeze.json": REPO_DIR / "config/level1_development_freeze.json",
     }
     for name, source in retained_files.items():
@@ -131,6 +156,7 @@ def main() -> None:
         shutil.rmtree(REPO_DIR)
     run(["git", "clone", "--depth", "1", "--branch", BRANCH, REPOSITORY, str(REPO_DIR)])
     run([sys.executable, "-m", "pip", "install", "-q", "-r", str(REPO_DIR / "requirements.txt")])
+    gpu_capability = ensure_compatible_gpu_runtime()
     run(
         [
             sys.executable,
@@ -167,6 +193,41 @@ def main() -> None:
     detector_config["model_path"] = str(model)
     runtime_config = WORK_ROOT / "runtime_detector_config.json"
     runtime_config.write_text(json.dumps(detector_config, indent=2), encoding="utf-8")
+
+    runtime_environment = {
+        "gpu_compute_capability": gpu_capability,
+        "torch_version": subprocess.check_output(
+            [sys.executable, "-c", "import torch; print(torch.__version__)"], text=True
+        ).strip(),
+    }
+    (WORK_ROOT / "runtime_environment.json").write_text(
+        json.dumps(runtime_environment, indent=2), encoding="utf-8"
+    )
+
+    # Probe one real frame before spending GPU time on the full 89-frame seed.
+    probe_dir = WORK_ROOT / "gpu_probe"
+    run(
+        [
+            sys.executable,
+            str(REPO_DIR / "run_v4.py"),
+            "--input",
+            str(video),
+            "--output",
+            str(probe_dir),
+            "--detection-config",
+            str(runtime_config),
+            "--tracker-config",
+            str(tracker_config),
+            "--max-seconds",
+            "0.034",
+            "--confirmation-observations",
+            "5",
+            "--max-prediction-frames",
+            "2",
+        ],
+        cwd=REPO_DIR,
+    )
+    shutil.rmtree(probe_dir)
 
     run(
         [
