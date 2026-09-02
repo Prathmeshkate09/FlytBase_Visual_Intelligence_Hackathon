@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.5
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -41,6 +41,7 @@
 
 # %%
 import hashlib
+import zipfile
 from pathlib import Path
 
 GITHUB_REPOSITORY = "https://github.com/Prathmeshkate09/FlytBase_Visual_Intelligence_Hackathon.git"
@@ -367,10 +368,31 @@ print({name: str(path) for name, path in DETECTION_CONFIGS.items()})
 # ## 9. One-frame probes and controlled 89-frame comparison
 
 # %%
-mot_matches = list(INPUT_ROOT.rglob("FlytBase_L1_dev89_corrected_MOT.zip"))
-if len(mot_matches) != 1:
-    raise RuntimeError(f"Expected one corrected development MOT archive, found {mot_matches}")
-MOT_GROUND_TRUTH = mot_matches[0]
+mot_archives = list(INPUT_ROOT.rglob("FlytBase_L1_dev89_corrected_MOT.zip"))
+mot_directories = sorted({
+    path.parent.parent
+    for path in INPUT_ROOT.rglob("gt/gt.txt")
+    if path.parent.parent.name == "FlytBase_L1_dev89_corrected_MOT"
+})
+if len(mot_archives) + len(mot_directories) != 1:
+    raise RuntimeError(
+        "Expected exactly one corrected development MOT input as an archive "
+        f"or unpacked directory; archives={mot_archives}, directories={mot_directories}"
+    )
+if mot_archives:
+    MOT_GROUND_TRUTH = mot_archives[0]
+else:
+    # Kaggle automatically expands ZIP dataset files. Recreate the archive
+    # shape consumed by the evaluator while preserving the internal paths.
+    mot_directory = mot_directories[0]
+    MOT_GROUND_TRUTH = DATA_DIR / "FlytBase_L1_dev89_corrected_MOT.zip"
+    mot_files = sorted(path for path in mot_directory.rglob("*") if path.is_file())
+    if not mot_files or not (mot_directory / "gt" / "gt.txt").is_file():
+        raise RuntimeError(f"Incomplete unpacked MOT input: {mot_directory}")
+    with zipfile.ZipFile(MOT_GROUND_TRUTH, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in mot_files:
+            archive.write(path, path.relative_to(mot_directory).as_posix())
+print("Development MOT ground truth:", MOT_GROUND_TRUTH)
 
 comparison_reports = {}
 comparison_outputs = {}
@@ -619,15 +641,23 @@ else:
 
 # %%
 if RUN_SCENE_FINETUNING:
-    coco_matches = list(INPUT_ROOT.rglob("FlytBase_L1_dev89_corrected_COCO.zip"))
-    if len(coco_matches) != 1:
-        raise RuntimeError(f"Expected one corrected COCO archive, found {coco_matches}")
+    coco_archives = list(INPUT_ROOT.rglob("FlytBase_L1_dev89_corrected_COCO.zip"))
+    coco_jsons = [
+        path for path in INPUT_ROOT.rglob("instances_default.json")
+        if path.parent.parent.name == "FlytBase_L1_dev89_corrected_COCO"
+    ]
+    if len(coco_archives) + len(coco_jsons) != 1:
+        raise RuntimeError(
+            "Expected exactly one corrected COCO input as an archive or unpacked JSON; "
+            f"archives={coco_archives}, jsons={coco_jsons}"
+        )
+    coco_annotations = (coco_archives or coco_jsons)[0]
     split_dataset = TRAINING_DIR / "dev89_split"
     subprocess.run(
         [
             sys.executable, str(REPO_DIR / "prepare_yolo_dataset.py"),
             "--video", str(VIDEO_PATH),
-            "--coco-annotations", str(coco_matches[0]),
+            "--coco-annotations", str(coco_annotations),
             "--output", str(split_dataset),
             "--expected-video-sha256", VIDEO_SHA256,
             "--expected-frames", "89",
