@@ -257,3 +257,36 @@ reviewable reasons that another engineer can verify.
   frame. If compression impairs object boundaries, recreate the empty/manual-
   work-free task with Image quality 100, Prefer zip chunks off, chunk size 4,
   frames 0-88, and frame step 1, then re-import the preserved seed XML.
+
+## 2026-09-02 20:16 IST - Publish Kaggle scene-refit fixes
+
+- Request: push the relevant completed Level-1 code to GitHub.
+- Actions and evidence:
+  - inspected the repository root, required project context, active branch,
+    working tree, outgoing diff, and GitHub remote;
+  - confirmed that `level1-v4` was three commits ahead of its remote and that
+    the outgoing changes affected only the synchronized Kaggle notebook source
+    and notebook files;
+  - preserved the two unrelated untracked detector/ROI configuration files;
+  - fetched `origin/level1-v4` and confirmed zero remote-only commits before
+    pushing commits `9f0cffe`, `971d836`, and `fb2f454`; and
+  - verified that the local and GitHub branch heads both resolved to
+    `fb2f4545d2bb9cd5549f6a3c2b267121dc2c87b0` after the push.
+- Engineering rationale: the changes make Kaggle ground-truth discovery work
+  with unpacked inputs, correct the all-frame scene-refit input, evaluate raw
+  fine-tuned candidates, and normalize scene-model classes to the canonical
+  FlytBase taxonomy. Fetching first prevented accidental remote overwrite.
+- Result: the relevant scene-fine-tuning workflow is published on GitHub branch
+  `level1-v4`.
+- Limitations:
+  - `tools/context_status.py --check-local-assets` reports the four compressed
+    media/SRT copies missing from their registered local directory;
+  - the local full pytest run reached 67 passes but was not clean because
+    Windows denied pytest temporary-directory access and the explicit local
+    asset-presence test failed; the earlier Kaggle smoke test remains the clean
+    code-test evidence for this notebook revision; and
+  - the live fine-tuning/evaluation run must finish before its metrics can be
+    recorded as experiment evidence.
+- Next: retrieve the completed Kaggle artifacts, validate their hashes and
+  metrics, and record the detector-selection conclusion before freezing the
+  detection cache for BoT-SORT tuning.
