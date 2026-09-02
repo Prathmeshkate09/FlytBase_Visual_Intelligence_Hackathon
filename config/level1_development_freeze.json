@@ -21,7 +21,8 @@
   },
   "tracking": {
     "config": "config/botsort_drone_v4.yaml",
-    "config_sha256": "ce957ed4808e5402e1e53579aea075c78d031e11aa8f12c4d61ca21437f58da5",
+    "repository_lf_sha256": "951f0d4166bed940f2fa1135516bd441fc1ea5cf06a221612e35a8f294357db6",
+    "windows_checkout_sha256": "ce957ed4808e5402e1e53579aea075c78d031e11aa8f12c4d61ca21437f58da5",
     "confirmation_observations": 5,
     "max_visible_prediction_frames": 2,
     "offline_stitching": true

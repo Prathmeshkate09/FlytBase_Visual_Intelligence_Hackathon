@@ -13,7 +13,7 @@ REPOSITORY = "https://github.com/Prathmeshkate09/FlytBase_Visual_Intelligence_Ha
 BRANCH = "level1-v4"
 VIDEO_SHA256 = "da399b57b6faa978115ec2d936a1670d4f7e995298b9cb508070c5e9e40168ee"
 MODEL_SHA256 = "02382dcc750f479ea23bfb6e51f82cbf257b1ffd95883b6b05b61822b3ea36c4"
-TRACKER_CONFIG_SHA256 = "ce957ed4808e5402e1e53579aea075c78d031e11aa8f12c4d61ca21437f58da5"
+TRACKER_CONFIG_SHA256 = "951f0d4166bed940f2fa1135516bd441fc1ea5cf06a221612e35a8f294357db6"
 
 INPUT_ROOT = Path("/kaggle/input")
 WORK_ROOT = Path("/kaggle/working/flytbase_v4_heldout_seed")
@@ -156,6 +156,8 @@ def main() -> None:
         raise RuntimeError("Frozen model manifest hash mismatch")
     if freeze["heldout"]["video_sha256"] != VIDEO_SHA256:
         raise RuntimeError("Frozen held-out video manifest hash mismatch")
+    if freeze["tracking"]["repository_lf_sha256"] != TRACKER_CONFIG_SHA256:
+        raise RuntimeError("Frozen tracker manifest hash mismatch")
 
     detector_config = json.loads(
         (REPO_DIR / "config/detection_scene_full_1920_frozen.json").read_text(
