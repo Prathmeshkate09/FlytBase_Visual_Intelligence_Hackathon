@@ -1,8 +1,8 @@
 # V4 tracker configuration. Tune remaining association settings against labelled MOT ground truth.
 tracker_type: botsort
-track_high_thresh: 0.25
+track_high_thresh: 0.10
 track_low_thresh: 0.05
-new_track_thresh: 0.25
+new_track_thresh: 0.15
 track_buffer: 180
 match_thresh: 0.80
 # Tiny aerial detections are often low-confidence even when their geometry is

@@ -20,15 +20,20 @@ SPEC.loader.exec_module(context_status)
 def test_project_context_is_complete_and_unverified() -> None:
     state = context_status.load_and_validate_state(REPO_ROOT)
 
-    assert state["levels"]["1"]["status"] == "development_gates_met_heldout_pending"
-    assert state["ground_truth"]["status"] == "corrected_development_exports_validated"
+    assert state["levels"]["1"]["status"] == "heldout_e010_failed_recall_and_idf1"
+    assert state["ground_truth"]["status"] == "development_passed_heldout_e010_failed"
     assert state["ground_truth"]["development_frames"] == 89
     assert state["ground_truth"]["cvat_frame_range"] == "0-88"
     assert state["ground_truth"]["precision"] >= 0.90
     assert state["ground_truth"]["recall"] >= 0.90
     assert state["ground_truth"]["idf1"] >= 0.85
     assert state["ground_truth"]["hota"] >= 0.70
-    assert state["next_action"]["id"] == "heldout_manual_checkpoint"
+    heldout = state["ground_truth"]["heldout_evaluation"]
+    assert heldout["experiment"] == "E010"
+    assert heldout["recall"] < 0.90
+    assert heldout["idf1"] < 0.85
+    assert state["levels"]["2"]["status"] == "blocked_by_level_1_gate"
+    assert state["next_action"]["id"] == "e011_development_recall_plan_and_new_holdout"
 
 
 def test_context_rejects_false_verified_claim(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -131,6 +131,99 @@ This is append-only. Results without preserved artifacts are labelled accordingl
 - Limitation: Level 1 remains incomplete until the separately corrected held-out
   clip passes all gates in one frozen evaluation.
 
+## E010 - One-time frozen held-out evaluation
+
+- Date: 2026-09-19; evaluator commit: `3e8d76ddf545d2c1ed3a8f1ae8509a67c355e614`.
+- Inference commit: `595ab7bd1c187e2b9620e76d12a6a93da0628303`;
+  Kaggle seed version 4, run `ff2b49d3-a668-40ac-b3f0-50cb728ad8aa`.
+- Inputs: exact da399 held-out video, frozen seed archive SHA-256
+  `5ae95e0ea6a56d2215b81fcddb4c8d5b0876bb89b4cd71f543c2c49cefbe4135`,
+  user-corrected CVAT task 2570030 exports dated 2026-09-19.
+- Full input hashes and cross-format validation:
+  `C:/Users/PRATHAMESH/Documents/Codex/2026-09-05/the-frozen-held-out-seed-is/outputs/e010_heldout/preflight.json`.
+- Configuration: E009 frozen scene-refit full-frame 1920, confidence 0.40,
+  no ROI, default BoT-SORT, confirmation 5, visible prediction horizon 2, stitching.
+- Counts: 89 frames; 171 GT identities / 14,273 boxes; 143 prediction
+  identities / 10,742 boxes. All three GT formats agree after MOT ID renumbering.
+- Metrics: precision 0.9883634333, recall 0.7438520283,
+  IDF1 0.8470117929, HOTA 0.8331234233, mode accuracy 0.9791843270;
+  one ID switch, 84 fragmentations. Recall and IDF1 fail.
+- Diagnostics: 1,809 missed pedestrian, 1,758 missed motorcycle and 89 missed
+  car frame-boxes. Category-agnostic matching; class accuracy reported separately.
+- Tests: 8 existing evaluator tests passed outside Windows sandbox temp restrictions.
+  Installed TrackEval provenance matches pinned commit 12c8791.
+- Preservation: original manifest and prediction files retained byte-for-byte.
+  Evaluation-only manifest omits unavailable cache output links and records the
+  original manifest hash; no predictions or numerical configuration changed.
+- Limitations: Kaggle retains only the handoff ZIP, so raw candidate/accepted/native
+  stage counts are unavailable. User reported exhaustive correction; 12,729 XML
+  visible boxes retain unchecked review flags (1,518 corrected, 26 confirmed).
+  No independent full-frame visual or anchor audit was performed. No renderer
+  completeness claim or broad generalization claim is made for this 2.97-second clip.
+- Conclusion: Level 1 fails held-out gates; Level 2 stays blocked. Detection
+  coverage is the dominant observed deficit; exact pipeline cause is unresolved.
+  Do not retune on this interval or repeat its score as new unseen evidence.
+
 ## Next experiment ID
 
-Use `E010` for the one-time frozen held-out evaluation after manual correction.
+E011 is recorded below. Use E012 for the next independently validated candidate
+experiment; register validation/test intervals before any candidate selection.
+
+## E011 - Small-object development threshold and resolution experiment
+
+- Date: 2026-09-20. User explicitly authorized private Kaggle upload and GPU run.
+- Kernel: seb09prathameshkate/flytbase-e011-small-object-development, v2 COMPLETE.
+- Code: 595ab7bd1c187e2b9620e76d12a6a93da0628303; GPU capability 7.5.
+- Inputs: E009 c8ead5 development video, 02382d frozen weights, 99e047 candidate
+  cache and b10b5e reconstructed MOT, all verified by full SHA-256.
+- Five prespecified runs, unchanged association/lifecycle, no retraining.
+- Baseline 1920 confidence .40 exactly reproduces E009.
+- 1920 vulnerable-user .30: precision .913538, recall .947000, IDF1 .913686,
+  HOTA .787966; all development gates pass.
+- 1920 vulnerable-user .20: precision .901408, recall .959001, IDF1 .912037,
+  HOTA .783653; all development gates pass but precision margin is thin.
+- 2560 .40: precision .911531, recall .834131, IDF1 .857640, HOTA .711134.
+  2560 vulnerable-user .30: precision .885015, recall .875130, IDF1 .859744,
+  HOTA .713662. Both fail development gates.
+- Evidence: current task outputs/e011_results/FlytBase_E011_Development.zip,
+  10,516,561 bytes; SHA-256
+  8b6f27b745dfbb4f8015906c9ead82bdb0325a6074b57e84ddeab9838d896a08.
+  Every one of 82 internal hashes and ZIP CRC passed. Full stage outputs retained.
+- Verification: 15 worker tests passed; baseline metrics within 1e-6 of E009.
+- Conclusion: .30 vulnerable-user threshold is a validation candidate only;
+  higher resolution is not supported. No replacement adopted, baseline remains
+  strongest on development HOTA/IDF1. E010 unchanged; Level 1 still failed.
+- Limitations: these are the original training/development frames; no independent
+  validation or unseen claim. No new visual anchor audit performed.
+
+## E012 - Recover detector-stage evidence and diagnose exposed E010 clip
+
+- Date: 2026-09-20; user asked to continue using existing annotations and
+  authorized continuing E012 after its specific remote-upload approval block.
+- Kernel: seb09prathameshkate/flytbase-e012-cache-diagnosis, v1 COMPLETE.
+- Code 595ab7b; original da399 video and 02382d model hashes pinned. No labels
+  uploaded. GPU job generated baseline .40 and prespecified VRU .30/.20 replays;
+  local scoring used corrected task 2570030 labels as post-hoc diagnostics.
+- This is exposed-test diagnostic reuse, not another independent evaluation.
+  Original E010 report and frozen configuration remain unchanged.
+- Baseline raw candidate recall .795978; thresholded .725636; accepted .725636;
+  native observed .724094; final .743712. Of 3,658 unmatched final boxes, 2,856
+  lacked a raw match, 767 lost their match at thresholding, 0 at subsequent
+  postprocessing, and 35 after accepted detections. Stage assignment differences
+  mean these are diagnostic partitions, not individual causal proofs.
+- Diagnostic precision/recall/IDF1/HOTA:
+  baseline .988177/.743712/.846852/.832500;
+  VRU .30 .920131/.769215/.830452/.814444;
+  VRU .20 .899205/.776921/.826612/.809364. All fail recall/IDF1.
+- Raw candidates already include NMS and .05 floor. Main deficit precedes
+  tracking; low-confidence filtering contributes but does not explain most loss.
+- Regeneration is not byte-identical: candidate/track hashes differ. Baseline
+  recall differs from E010 by -.014 percentage points and HOTA by -.062 points.
+  Cause of numerical drift not established; diagnostics kept separate.
+- Evidence: task outputs/e012_results, archive 5,027,107 bytes, SHA-256
+  296ad7e3ebfc0d68508615b0bb77f406e11fe2de5f6e0adf44577e9db1f23510.
+  ZIP CRC, outer hash and all 47 internal hashes passed.
+- Tests: eight worker tests and local synthetic stage/frame-offset check passed.
+- Conclusion: lower thresholds alone rejected as solution; prioritize
+  small-object candidate generation using existing labels. No new training or
+  model adoption occurred. E013 is the next detector-improvement experiment.

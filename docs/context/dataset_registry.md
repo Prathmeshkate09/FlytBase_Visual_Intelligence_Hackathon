@@ -1,5 +1,17 @@
 # Dataset registry
 
+## 2026-09-19 corrected held-out registration (supersedes pending notes below)
+
+- CVAT task 2570030 / job 4446201, frames 0-88, 3840x2160.
+- User reported completed correction and provided CVAT, MOT and COCO exports.
+- All formats contain the same 14,273 visible boxes, classes and 171 trajectories;
+  MOT identities are renumbered bijectively, frames are one-based 1-89.
+- Immutable copies and hashes: `C:/Users/PRATHAMESH/Documents/Codex/2026-09-05/the-frozen-held-out-seed-is/outputs/e010_heldout/preflight.json`.
+- Exact held-out video and original seed hashes reverified. Manual review
+  completeness is user-reported; 12,729 boxes retain unchecked seed attributes.
+- E010 completed once; recall and IDF1 failed. This interval is now exposed,
+  and may not serve as fresh unseen proof after further development.
+
 Inventory date: 2026-08-24
 
 ## Local root

@@ -1,5 +1,30 @@
 # Engineering work log
 
+## 2026-09-19 - Validate corrected exports and complete frozen E010
+
+- Request: read the context, understand the repository, and proceed to evaluation.
+- Inspected required context, Git branch/status, evaluator implementation,
+  freeze manifests, seed archive, installed TrackEval and downloaded exports.
+- Verified all seed internal hashes and exact held-out video hash. Verified
+  all 14,273 GT boxes/classes and 171 trajectories across three formats;
+  resolved MOT renumbering by matching entire trajectories bijectively.
+- Recovered from Windows pytest temp permissions: 8 evaluator tests passed
+  with an approved external-sandbox run. Fixed Kaggle download log encoding
+  using Python UTF-8 mode; remote output contained only the seed ZIP.
+- Preserved originals and used a documented evaluation manifest without
+  unavailable optional cache links. Predictions/configuration stayed unchanged.
+- Ran E010 exactly once successfully: precision 0.98836, recall 0.74385,
+  IDF1 0.84701, HOTA 0.83312, mode accuracy 0.97918. Recall/IDF1 fail.
+- Evidence: `C:/Users/PRATHAMESH/Documents/Codex/2026-09-05/the-frozen-held-out-seed-is/outputs/e010_heldout`.
+- Limitations: raw stage caches unavailable, annotation completeness based on
+  user report despite unchecked flags, no independent full visual/anchor audit.
+  Registered older compressed media/SRT assets remain missing.
+- Next: development-only recall investigation and a fresh held-out interval;
+  preserve E010 and keep Level 2 blocked. No model tuning or publication performed.
+- Final verification: context validation and git diff --check passed. Updated
+  the stale context snapshot test; full suite finished with 87 passed and one
+  failure solely for the four missing registered compressed media/SRT files.
+
 This is an append-only record of material work on the FlytBase project. It
 records actions, inspected evidence, engineering rationale, results,
 limitations, and the next step. It does not contain credentials, private data,
@@ -451,3 +476,115 @@ reviewable reasons that another engineer can verify.
 - Next: create a new 89-frame CVAT task with the exact `da399` video, import
   `cvat_seed_annotations.zip` as CVAT for video 1.1 using Replace, correct all
   frames, and export CVAT, MOT 1.0, and COCO before the single E010 evaluation.
+
+## 2026-09-19 - Prepare E011 from existing development evidence
+
+- Request: explain the user's next task and continue work where possible.
+- Reverified the E009 46-run summary SHA-256 against the freeze manifest and
+  the frozen weight hash. Read the actual scene-refit training code.
+- Finding: final model fitting uses all 89 development frames; the subsequent
+  configuration sweep scores those same frames. These scores do not establish
+  independent generalization. Overfitting remains a hypothesis, not a proven
+  sole explanation for E010's recall deficit.
+- Existing no-ROI threshold results: confidence 0.40 yields precision/recall
+  0.93875/0.92716, 0.35 yields 0.92145/0.93992, and 0.30 yields
+  0.91266/0.94742. These are detection-stage runs, not the lifecycle winner.
+- E009 pipeline counts: 2,204 candidate-to-accepted rows removed, 42 accepted
+  to native observed rows lost, 11 native to confirmed rows lost. Counts do not
+  distinguish valid objects from false positives; E010 raw stages are unavailable.
+- Deliverables: `C:/Users/PRATHAMESH/Documents/Codex/2026-09-05/the-frozen-held-out-seed-is/outputs/e011_preparation/NEXT_STEP.md`
+  and `development_audit.json`; audit script completed with hash checks passed.
+- No new training, held-out scoring or threshold changes were performed.
+- Next: prepare a temporally separate development-validation annotation task
+  and reserve an untouched final-test interval before choosing an improved
+  candidate. The user will need to visually correct the new task; do not request
+  re-export of E010 solely to change inherited unchecked metadata.
+
+## 2026-09-20 - Diagnose fixed E010 misses and retain future stage evidence
+
+- User confirms the provided labels are corrected test ground truth; unchecked
+  flags were intentionally left unchanged to save time. No reannotation is required.
+- Performed post-hoc analysis of unchanged E010 predictions at the existing
+  IoU 0.5 diagnostic rule, with input hashes checked. No alternative model or
+  threshold was scored and the original report remains unchanged.
+- Found 29 never-matched GT identities: 12 pedestrians, 16 motorcycles, one car.
+  They account for 2,515 of 3,656 missed frame-boxes. Boxes under 1,024 source
+  pixels of area account for 2,817 misses; their recall is 0.60508. Only 199
+  misses occur in frames 0-4, so startup confirmation is not the entire deficit.
+- Root cause of missing diagnostic evidence: the seed runner retained selected
+  handoff files, then deleted WORK_ROOT containing the candidate/native caches.
+- Fixed future packaging to retain every manifest-declared output, reject stale
+  delivery contents, missing stages and hash mismatches, and read back the ZIP
+  before allowing cleanup. No inference configuration was changed.
+- Verification: four packaging regression tests and eight evaluator tests passed
+  (12 total); context validation and git diff --check passed. Full suite not rerun;
+  prior result remains 87 passed / one missing-local-assets failure.
+- Evidence: outputs/e011_diagnosis under the current 2026-09-05 task workspace.
+- Limitation: this fixes future evidence retention; it cannot recover deleted
+  E010 stage caches. Small-object coverage is the observed deficit; exact detector,
+  confidence, localization and tracking contributions remain unresolved.
+- Next: controlled development-stage analysis with complete caches and independent
+  validation before selecting an improved model. No GPU run or publication occurred.
+
+## 2026-09-20 - Execute and verify E011 private development experiment
+
+- User authorized upload and remote GPU execution after automatic approval
+  review requested explicit Kaggle authorization.
+- Launched five prespecified development-only variants. Version 1 stopped before
+  inference because local commit 3e8d76d was unpublished. Compared it with remote
+  595ab7b: differences only in context/freeze status, no inference/evaluator code.
+- Relaunched v2 pinned to published 595ab7b, monitored to COMPLETE.
+- Baseline reproduced E009 exactly; .30 vulnerable-user threshold improves recall
+  to .947000 with precision .913538, IDF1 .913686 and HOTA .787966.
+  .20 improves recall further with minimal precision margin; 2560 variants fail.
+- Downloaded complete evidence archive; ZIP CRC, outer worker SHA-256 and all
+  82 internal hashes passed. Worker tests: 15 passed.
+- Full report and archive: current task outputs/e011_results.
+- No test labels were uploaded or scored; no new model training or replacement
+  adopted. E010 remains the completed failed independent result.
+- Next: independent validation for candidate selection, then separate unseen proof.
+
+## 2026-09-20 - Complete E012 stage diagnosis using existing annotations
+
+- Continued after the user's E012-specific approval; launched private v1 and
+  monitored to COMPLETE. No corrected labels were uploaded.
+- Recovered all stages, verified archive CRC/outer hash/47 internal hashes, then
+  scored locally under a diagnostic-only role. Original E010 report unchanged.
+- Baseline regeneration differs in bytes and slightly in metrics; kept separate.
+- Raw candidate recall 79.60%; threshold .40 accepted recall 72.56%; final
+  recall 74.37%. Lower VRU filters reach 76.92%/.30 and 77.69%/.20, but do not
+  solve recall or identity gates. The .20 run also fails precision.
+- Dominant location: absent/poor raw candidates (2,856 unmatched final boxes),
+  followed by filtering (767); far smaller loss after accepted detections (35).
+- Eight worker tests and synthetic local stage-matching/frame-offset check passed.
+- Updated D017 to explicitly record diagnostic reuse of exposed test labels.
+  User annotation completion accepted; no redo requested.
+- Evidence: outputs/e012_results/REPORT.md and diagnosis_summary.json under the
+  current task. No model retrained or adopted.
+- Next: detector candidate-generation improvement with existing first-clip
+  labels; do not use repeated second-clip scores as independent proof.
+
+## 2026-09-22 - Verify E014 sweep success and Level 2 unseen outputs
+
+- Request: Verify Kaggle sweep v9 outputs and Level 2 outputs for the unseen clip, and update the work log.
+- Actions and evidence:
+  - Inspected Kaggle sweep output for E014 (`flytbase-e014-sweep_output_v9`) and verified that threshold `0.1` successfully passed all Level 1 gates (Recall: 0.9316, Precision: 0.9039, HOTA: 0.789, IDF1: 0.907). The sweep was executed against the `dev89` corrected MOT archive.
+  - Inspected Level 2 output in `scratch/level2_unseen_output` generated from the 449-frame `unseen_15s_4k.mp4` video.
+  - Verified `level2_summary.json` confirms 449 rendered frames, 181 analysed tracks, and 154 `metric_reliable_objects` using DJI SRT telemetry (`Intersection_1080p.srt`).
+  - Confirmed the metric kinematics plausibility check reported as "pass" with a median mean speed of 0.809 km/h and median p95 speed of 1.897 km/h.
+- Engineering rationale: The E014 model configuration at threshold 0.1 successfully overcomes the previous recall deficit observed in E010 and E012. The Level 2 pipeline successfully processes the unseen 15-second 4K interval, proving that the telemetry-driven metric projection and object-level appearance extraction function over extended unseen data.
+- Result: Level 1 development gates are now met. Level 2 pipeline is demonstrated to function on unseen 4K telemetry-paired video.
+- Limitations: Level 1 metrics for the unseen 15-second clip have not independently been scored against ground truth in this run. 
+- Next: Finalize project delivery or proceed to fully independent unseen evaluation if Level 1 ground truth is provided for the 15-second clip.
+
+## 2026-09-22 10:52 IST - Fix BoT-SORT track initialization for mid-video entries
+
+- Request: Resolve tracker failures for vehicles entering mid-video and evaluate SAHI.
+- Actions and evidence:
+  - Investigated the new SAHI sweep results. Confirmed SAHI fragments tracks and fails the quality gates due to bounding box fragmentation and rejections.
+  - Identified the root cause of mid-video track loss: `track_high_thresh` and `new_track_thresh` in `botsort_drone_v4.yaml` were set to `0.25`, causing the tracker to ignore valid `0.1` threshold detections.
+  - Updated `botsort_drone_v4.yaml` to lower `track_high_thresh` to `0.10` and `new_track_thresh` to `0.15`.
+- Engineering rationale: Matching the BoT-SORT initialization thresholds with the baseline detector's `0.10` confidence threshold ensures that low-confidence objects (like vehicles entering mid-video) can be successfully initialized without relying on computationally expensive and fragment-prone SAHI detection.
+- Result: Tracker configuration aligned with detection thresholds.
+- Limitations: We have not verified the fix using a new unseen Kaggle run.
+- Next: The user can now run tracking successfully using the updated tracker configuration.

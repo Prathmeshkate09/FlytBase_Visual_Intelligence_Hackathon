@@ -78,6 +78,8 @@ def ensure_compatible_gpu_runtime() -> str:
 
 def write_delivery_archive() -> dict[str, object]:
     DELIVERY_DIR.mkdir(parents=True, exist_ok=True)
+    if any(DELIVERY_DIR.iterdir()):
+        raise RuntimeError("Delivery directory must be empty to prevent stale evidence")
     retained_files = {
         "annotations.xml": SEED_DIR / "annotations.xml",
         "ANNOTATION_INSTRUCTIONS.md": SEED_DIR / "ANNOTATION_INSTRUCTIONS.md",
@@ -91,6 +93,28 @@ def write_delivery_archive() -> dict[str, object]:
         "runtime_environment.json": WORK_ROOT / "runtime_environment.json",
         "development_freeze.json": REPO_DIR / "config/level1_development_freeze.json",
     }
+    # The working directory is removed after packaging. Retain every declared
+    # stage output so later evaluation can distinguish detection/filtering loss
+    # from association and confirmation loss without regenerating predictions.
+    manifest = json.loads((RUN_DIR / "run_manifest.json").read_text(encoding="utf-8"))
+    for relative in manifest["outputs"].values():
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or len(relative_path.parts) != 1:
+            raise ValueError(f"Expected a flat inference output filename: {relative}")
+        source = RUN_DIR / relative_path
+        if relative in retained_files and retained_files[relative] != source:
+            raise ValueError(f"Delivery filename collision: {relative}")
+        retained_files[relative] = source
+    for name, source in retained_files.items():
+        if not source.is_file():
+            raise FileNotFoundError(source)
+    for output_key, hash_key in (
+        ("tracks", "tracks_sha256"),
+        ("candidate_detections", "candidate_detections_sha256"),
+    ):
+        source = RUN_DIR / manifest["outputs"][output_key]
+        if sha256_file(source) != manifest[hash_key]:
+            raise RuntimeError(f"Output hash mismatch before packaging: {output_key}")
     for name, source in retained_files.items():
         if not source.exists():
             raise FileNotFoundError(source)
@@ -125,6 +149,15 @@ def write_delivery_archive() -> dict[str, object]:
     with zipfile.ZipFile(ARCHIVE_PATH, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(DELIVERY_DIR.iterdir()):
             archive.write(path, path.name)
+    # Do not allow main() to remove the only raw copy until the archive is read
+    # back successfully and its retained bytes agree with the provenance.
+    with zipfile.ZipFile(ARCHIVE_PATH) as archive:
+        if archive.testzip() is not None:
+            raise RuntimeError("Delivery archive failed its CRC check")
+        for name, metadata in provenance["files"].items():
+            data = archive.read(name)
+            if len(data) != metadata["bytes"] or hashlib.sha256(data).hexdigest() != metadata["sha256"]:
+                raise RuntimeError(f"Delivery archive content mismatch: {name}")
     result = {
         **provenance,
         "archive": {
@@ -277,7 +310,7 @@ def main() -> None:
     print(json.dumps(result, indent=2))
     print("HELDOUT_SEED_RESULT_END")
 
-    # Keep only the small, self-contained delivery archive in Kaggle output.
+    # All manifest-declared stage outputs are now retained and verified.
     shutil.rmtree(WORK_ROOT)
     print("Held-out seed archive:", ARCHIVE_PATH)
 

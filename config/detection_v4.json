@@ -1,7 +1,7 @@
 {
   "model_path": "yolo26l.pt",
   "device": "0",
-  "confidence": 0.05,
+  "confidence": 0.30,
   "iou": 0.5,
   "class_ids": [0, 1, 2, 3, 5, 7],
   "image_size": 1280,

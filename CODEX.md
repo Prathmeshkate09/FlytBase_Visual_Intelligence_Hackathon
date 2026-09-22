@@ -1,6 +1,22 @@
 # FlytBase Visual Intelligence — durable project context
 
-Last updated: 2026-08-24
+Last updated: 2026-09-19
+
+## Latest checkpoint (supersedes historical candidate text below)
+
+E010 evaluated the frozen held-out predictions once against user-corrected
+CVAT task 2570030 on 2026-09-19. Precision 0.98836 and HOTA 0.83312 passed;
+recall 0.74385 and IDF1 0.84701 failed the 0.90/0.85 gates. Mode accuracy was
+0.97918, with one ID switch and 84 fragmentations. Level 1 remains failed and
+Level 2 blocked. The model is scene-refit YOLOv9e, frozen in E008/E009.
+
+All three corrected exports agree on 14,273 boxes and 171 identities after
+accounting for MOT ID renumbering. Manual completion is user-reported; many
+seed review-status attributes remain unchecked. Raw detector/native caches
+were not retained, so losses cannot be attributed exactly to pipeline stages.
+Evidence: `C:/Users/PRATHAMESH/Documents/Codex/2026-09-05/the-frozen-held-out-seed-is/outputs/e010_heldout`.
+Next: develop recall improvements using development data and define a fresh
+held-out interval. Do not tune on E010 labels and call the same interval unseen.
 
 This is the compact project handbook. `AGENTS.md` tells an agent how to work; this file tells it what the project is, what has been learned, and what to do next. Detailed evidence lives in `docs/context/`.
 

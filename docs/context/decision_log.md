@@ -1,5 +1,18 @@
 # Engineering decision log
 
+## D016 - Preserve E010 failure and require new unseen proof
+
+- Status: accepted; date: 2026-09-19.
+- Evidence: E010 recall 0.74385 < 0.90 and IDF1 0.84701 < 0.85,
+  despite precision 0.98836 and HOTA 0.83312.
+- Decision: retain the frozen score and keep Level 2 blocked. Investigate
+  pedestrian/motorcycle coverage using development data; define a fresh
+  held-out interval for any improved candidate.
+- Reason: repeated tuning against these exposed labels would invalidate
+  an unseen-test claim. Missing raw caches limit exact stage attribution.
+- Annotation caveat: completion is user-reported; structural consistency
+  does not certify every object's visual accuracy.
+
 Statuses: `accepted`, `provisional`, `rejected`, `deferred`, or `superseded`.
 
 ## D001 — Ground truth is the Level-1 release gate
@@ -136,3 +149,21 @@ Statuses: `accepted`, `provisional`, `rejected`, `deferred`, or `superseded`.
 - Constraint: development success is not Level-1 completion. The `da399` clip
   must now receive independent manual ground truth and one frozen evaluation;
   it must not become a repeated tuning set.
+
+## D017 - E012 is exposed-test diagnosis; prioritize candidate generation
+
+- Date: 2026-09-20; status: accepted for subsequent engineering.
+- User confirmed completed labels and requested investigation using existing
+  annotations before asking for more manual work.
+- E010 remains the original frozen independent result. E012 and any subsequent
+  selection on this interval are explicitly post-test diagnostic/development reuse.
+  This supersedes the no-reuse operating restriction, never the unbiased-test rule.
+- Evidence: raw candidate recall .795978 versus final .743712; 2,856 of 3,658
+  regenerated final misses lack raw matches. VRU thresholds .30/.20 do not meet
+  recall, and reduce identity quality. They are not adopted.
+- Decision: target small-object candidate generation/localization first. A
+  crop-assisted detector-training experiment can use existing first-clip labels;
+  second-clip diagnosis does not count as new unseen proof.
+- Limitation: raw stage is after model NMS and confidence .05, so the evidence
+  does not separate neural representation, NMS, confidence-floor and localization
+  failures. No new model architecture or training recipe is accepted yet.

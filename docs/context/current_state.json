@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-03",
+  "as_of": "2026-09-20",
   "project_mode": "personal_research_after_hackathon",
   "repository": {
     "branch": "level1-v4",
@@ -21,8 +21,8 @@
   "levels": {
     "1": {
       "name": "Detection and Tracking",
-      "status": "development_gates_met_heldout_pending",
-      "run_id": "e18e20ab-85db-40b7-b5ee-fee5213617c4"
+      "status": "heldout_e010_failed_recall_and_idf1",
+      "run_id": "ff2b49d3-a668-40ac-b3f0-50cb728ad8aa"
     },
     "2": {
       "name": "Object-Level Insight",
@@ -42,7 +42,27 @@
     }
   },
   "ground_truth": {
-    "status": "corrected_development_exports_validated",
+    "status": "development_passed_heldout_e010_failed",
+    "heldout_evaluation": {
+      "experiment": "E010",
+      "date": "2026-09-19",
+      "cvat_task_id": 2570030,
+      "cvat_job_id": 4446201,
+      "frames": 89,
+      "ground_truth_tracks": 171,
+      "ground_truth_boxes": 14273,
+      "precision": 0.9883634332526532,
+      "recall": 0.7438520283051916,
+      "idf1": 0.8470117929242454,
+      "hota": 0.8331234232818008,
+      "mode_accuracy": 0.9791843270226994,
+      "id_switches": 1,
+      "fragmentations": 84,
+      "evidence_directory": "C:/Users/PRATHAMESH/Documents/Codex/2026-09-05/the-frozen-held-out-seed-is/outputs/e010_heldout",
+      "manual_review_basis": "User explicitly confirms the test annotations were corrected; unchecked attributes were intentionally left unchanged to save time. Flags do not affect evaluation and do not require reannotation.",
+      "limitation": "Raw detector/native caches were not retained in Kaggle output; detailed pipeline-stage loss attribution is unavailable.",
+      "split_policy": "E010 is final for this frozen candidate. Do not tune on these labels and reuse this interval as unseen proof."
+    },
     "development_clip": "C:\\Users\\PRATHAMESH\\Documents\\Codex\\2026-08-22\\kn\\work\\cvat_upload\\level1_v4_dev_3s\\source_video_89f.mp4",
     "development_frames": 89,
     "heldout_clip": "C:\\Users\\PRATHAMESH\\Documents\\Codex\\2026-08-22\\kn\\work\\cvat_upload\\level1_v4_heldout_3s\\source_video_89f.mp4",
@@ -50,7 +70,7 @@
     "heldout_original_source": "D:\\Flybase\\Intersection_Merged.MP4",
     "heldout_original_frame_range": "870-958",
     "heldout_source_verification": "all 89 decoded frames pixel-identical to original frames 870-958 on 2026-09-02",
-    "heldout_seed_status": "frozen_seed_generated_manual_correction_pending",
+    "heldout_seed_status": "user_corrected_exports_validated_e010_completed",
     "heldout_seed_archive": "C:\\Users\\PRATHAMESH\\Documents\\Codex\\2026-08-22\\kn\\work\\cvat_upload\\level1_v4_heldout_frozen_seed\\FlytBase_L1_Heldout_Frozen_Seed.zip",
     "heldout_seed_archive_sha256": "5ae95e0ea6a56d2215b81fcddb4c8d5b0876bb89b4cd71f543c2c49cefbe4135",
     "cvat_task_id": 2540401,
@@ -76,6 +96,7 @@
     "appearance_reid": "deferred_pending_controlled_ground_truth_test"
   },
   "current_level_1_counts": {
+    "scope": "historical_E009_development_counts; current_E010_counts_are_in_ground_truth.heldout_evaluation",
     "frames": 89,
     "candidate_detections": 16301,
     "accepted_detections": 14097,
@@ -86,8 +107,29 @@
     "id_switches": 21,
     "fragmentations": 100
   },
+  "latest_development_experiment": {
+    "id": "E011",
+    "status": "complete_candidate_requires_independent_validation",
+    "kaggle_kernel": "seb09prathameshkate/flytbase-e011-small-object-development",
+    "version": 2,
+    "candidate": "1920 with pedestrian/bicycle/motorcycle thresholds 0.30, other classes 0.40",
+    "candidate_metrics": {"precision": 0.913538, "recall": 0.947000, "idf1": 0.913686, "hota": 0.787966},
+    "adopted": false,
+    "archive_sha256": "8b6f27b745dfbb4f8015906c9ead82bdb0325a6074b57e84ddeab9838d896a08"
+  },
+  "latest_diagnostic_experiment": {
+    "id": "E012",
+    "status": "complete_detector_candidate_coverage_is_primary_deficit",
+    "scope": "post-test diagnostic reuse; E010 remains original independent result",
+    "raw_candidate_recall": 0.7959784207945071,
+    "vru030_final_recall": 0.7692146009948855,
+    "vru020_final_recall": 0.7769214600994886,
+    "baseline_byte_identical": false,
+    "original_e010_unchanged": true,
+    "archive_sha256": "296ad7e3ebfc0d68508615b0bb77f406e11fe2de5f6e0adf44577e9db1f23510"
+  },
   "next_action": {
-    "id": "heldout_manual_checkpoint",
-    "description": "Have the user import the frozen seed into a new task for the exact da399 video, manually correct all 89 held-out frames, and export CVAT, MOT, and COCO before one E010 evaluation."
+    "id": "e011_development_recall_plan_and_new_holdout",
+    "description": "E012 localizes main deficit before tracking: raw candidate recall 79.60%; lower class thresholds do not solve it. Begin E013 small-object candidate-generation work using existing first-clip labels (crop-assisted training is a candidate). No new annotation required to begin. Second-clip reuse is diagnostic/development only; E010 preserved and Level 2 blocked."
   }
 }
